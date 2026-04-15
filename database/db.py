@@ -12,11 +12,20 @@ Fixes aplicados:
   - save_all_layers: upsert SIGEF + append seguro para demais layers
 """
 
+# ── IMPORTS OBRIGATÓRIOS (NO TOPO) ─────────────────────────────────────
 import logging
-# ── CONEXÃO COM BANCO (Railway-compatible) ─────────────────────────────
 import os
+from typing import Optional
 
-# Tenta DATABASE_URL primeiro, senão monta com variáveis individuais
+import geopandas as gpd
+import pandas as pd
+from passlib.context import CryptContext
+from sqlalchemy import create_engine, text
+from urllib.parse import quote_plus
+
+logger = logging.getLogger(__name__)
+
+# ── CONEXÃO COM BANCO (Railway-compatible) ─────────────────────────────
 _raw_db_url = os.getenv("DATABASE_URL")
 
 if not _raw_db_url:
@@ -27,9 +36,7 @@ if not _raw_db_url:
     port = os.getenv("PGPORT", "5432")
     database = os.getenv("PGDATABASE", "radar_pericial")
     
-    from urllib.parse import quote_plus
     password = quote_plus(password)  # Codifica senha com caracteres especiais
-    
     _raw_db_url = f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
 # Garante driver psycopg2 para SQLAlchemy 2.0
@@ -40,7 +47,6 @@ else:
 
 # ── Singleton do engine ────────────────────────────────────────────────────
 _engine = None
-
 
 def get_engine():
     global _engine
@@ -53,7 +59,6 @@ def get_engine():
             pool_timeout=30,
         )
     return _engine
-
 
 # ── Contexto bcrypt ────────────────────────────────────────────────────────
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -68,13 +73,11 @@ LAYER_TABLE = {
     "car":             "cadastro_ambiental",
 }
 
-# Layers de referência: substituição completa é OK (dados estáticos de base)
 _REFERENCE_LAYERS = {"municipios_mt", "limite_estado_mt"}
 
 
 class Database:
     def __init__(self, url: str = None):
-        # Usa singleton global; `url` mantido apenas para compatibilidade em testes
         if url:
             self.engine = create_engine(url, pool_pre_ping=True)
         else:
@@ -97,7 +100,6 @@ class Database:
             token_expira TIMESTAMPTZ,
             criado_em TIMESTAMPTZ DEFAULT NOW()
         );
-        -- Adiciona colunas de token se a tabela já existia antes deste fix
         ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token TEXT;
         ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token_expira TIMESTAMPTZ;
 
@@ -278,7 +280,6 @@ class Database:
         """
         with self.engine.connect() as conn:
             conn.execute(text(sql))
-            # Admin inicial com SHA256 — upgradado para bcrypt no primeiro login
             import hashlib
             h = hashlib.sha256("admin".encode()).hexdigest()
             conn.execute(text(
@@ -290,10 +291,6 @@ class Database:
 
     # ── Autenticação ──────────────────────────────────────────────────
     def check_login(self, username: str, password_raw: str) -> bool:
-        """
-        Verifica credenciais suportando bcrypt (novo) e SHA256 (legado).
-        Faz upgrade automático para bcrypt na primeira autenticação bem-sucedida.
-        """
         with self.engine.connect() as conn:
             row = conn.execute(
                 text("SELECT id, password_hash FROM usuarios WHERE username=:u"),
@@ -303,11 +300,9 @@ class Database:
                 return False
             uid, stored = row[0], row[1]
 
-            # Hash bcrypt moderno
             if stored.startswith("$2b$") or stored.startswith("$2a$"):
                 return pwd_context.verify(password_raw, stored)
 
-            # Hash SHA256 legado — verifica e faz upgrade automático
             import hashlib
             if hashlib.sha256(password_raw.encode()).hexdigest() == stored:
                 new_hash = pwd_context.hash(password_raw)
@@ -321,7 +316,6 @@ class Database:
             return False
 
     def create_token(self, username: str) -> str:
-        """Gera e persiste token de sessão válido por 24h."""
         import uuid
         from datetime import datetime, timedelta
         token = str(uuid.uuid4())
@@ -335,7 +329,6 @@ class Database:
         return token
 
     def validate_token(self, token: str) -> Optional[str]:
-        """Retorna username se token válido e não expirado, None caso contrário."""
         if not token:
             return None
         with self.engine.connect() as conn:
@@ -372,17 +365,12 @@ class Database:
             logger.error(f"Erro '{table}': {e}")
 
     def _upsert_sigef(self, gdf: gpd.GeoDataFrame):
-        """
-        Upsert de parcelas SIGEF por codigo_imovel via staging table.
-        Preserva registros históricos de parcelas fora da nova carga.
-        """
         if gdf is None or gdf.empty:
             return
         staging = "parcelas_sigef_staging"
         try:
             self.save_geodataframe(gdf, staging, if_exists="replace")
             with self.engine.connect() as conn:
-                # Remove apenas os registros que serão atualizados
                 conn.execute(text("""
                     DELETE FROM parcelas_sigef
                     WHERE codigo_imovel IN (
@@ -390,7 +378,6 @@ class Database:
                         WHERE codigo_imovel IS NOT NULL
                     )
                 """))
-                # Reinsere com dados novos
                 conn.execute(text("""
                     INSERT INTO parcelas_sigef
                         (codigo_imovel, municipio, area_ha, situacao,
@@ -416,13 +403,6 @@ class Database:
             self.save_geodataframe(gdf, "parcelas_sigef", if_exists="append")
 
     def save_all_layers(self, layers: dict):
-        """
-        Salva layers geoespaciais com estratégia segura por tipo:
-          - Layers de referência (municípios, limite): replace total
-          - SIGEF parcelas: upsert por codigo_imovel
-          - Demais layers incrementais (prodes, deter, car): append
-        Layers vazios são sempre ignorados — não destroem dados existentes.
-        """
         for k, v in layers.items():
             table = LAYER_TABLE.get(k, k)
 
@@ -520,7 +500,6 @@ class Database:
             conn.commit()
 
     def save_movimentacao(self, processo_id: int, dados: dict):
-        """Insere movimentação apenas se não existir (processo_id + data + descrição)."""
         with self.engine.connect() as conn:
             existing = conn.execute(
                 text("""
@@ -559,7 +538,6 @@ class Database:
             conn.commit()
 
     def save_portarias(self, portarias: list):
-        """Salva portarias com deduplicação por (titulo, data_publicacao, fonte)."""
         if not portarias:
             return
         df_new = pd.DataFrame(portarias)

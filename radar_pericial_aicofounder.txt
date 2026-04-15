@@ -1,0 +1,206 @@
+======================================================
+RADAR PERICIAL — ANÁLISE DE VIABILIDADE DO PROJETO
+Documento para avaliação por AI Co-Founder
+======================================================
+
+## RESUMO EXECUTIVO
+
+Nome do projeto: Radar Pericial
+Versão atual: v3 (em desenvolvimento ativo)
+Estágio: Produto funcional, sem clientes pagantes ainda
+Mercado-alvo: Peritos agrônomos judiciais no estado de Mato Grosso, Brasil
+
+O Radar Pericial é uma plataforma SaaS B2B de inteligência judicial e geoespacial voltada
+para peritos agrônomos. O sistema monitora automaticamente processos judiciais, diários
+oficiais e dados fundiários geoespaciais para identificar oportunidades de perícia técnica
+antes que os peritos precisem buscar manualmente.
+
+
+## PROBLEMA QUE RESOLVE
+
+Peritos agrônomos no Brasil dependem de indicações pessoais e consultas manuais a portais
+de tribunais para descobrir processos onde podem ser nomeados como peritos judiciais.
+Esse processo é:
+- Manual e demorado (verificar múltiplos portais diariamente)
+- Pouco confiável (muitos processos passam sem ser percebidos)
+- Geograficamente limitado (peritos tendem a atuar só onde têm contatos)
+- Sem inteligência sobre quais processos têm maior probabilidade de nomeação
+
+O perito médio perde oportunidades de perícia simplesmente por não monitorar os canais certos
+no momento certo.
+
+
+## SOLUÇÃO
+
+Plataforma de monitoramento automático que:
+1. Coleta processos judiciais em tempo real do DataJud/CNJ e TJMT (Tribunal de Justiça de MT)
+2. Monitora diários oficiais (DOU, IOMAT-MT, SINFRA-MT, DNIT, INCRA)
+3. Integra dados geoespaciais fundiários (SIGEF/INCRA, INPE PRODES/DETER, CAR)
+4. Aplica motor de score proprietário (13 categorias agronômicas, escala 0-100)
+5. Classifica processos em faixas: frio / observação / provável / janela quente
+6. Exibe tudo em dashboard interativo com mapa (Leaflet) e alertas automáticos
+
+O perito abre o sistema e vê imediatamente quais processos em sua região têm maior
+probabilidade de precisar de perícia agronômica.
+
+
+## MERCADO
+
+### Mercado primário
+- Peritos agrônomos no Mato Grosso com registro no CREA-MT
+- Estimativa: 800 a 1.200 peritos ativos com atuação judicial no estado
+- MT é o maior estado produtor agrícola do Brasil (soja, milho, algodão, pecuária)
+- Alta litigiosidade fundiária: desapropriações, reforma agrária, danos ambientais, conflitos possessórios
+
+### Mercado expandível
+- 26 outros estados brasileiros com dinâmica similar
+- Engenheiros florestais, geólogos e outros profissionais com atuação pericial
+- Escritórios de advocacia especializados em direito agrário
+- Instituições financeiras com carteiras de crédito rural (monitoramento de garantias)
+
+### Tamanho estimado (Brasil)
+- ~15.000 peritos agrônomos com registro no CFEA/CREAs
+- Honorários médios de perícia: R$ 5.000 a R$ 50.000 por processo
+- Um perito ativo faz entre 10 e 40 perícias por ano
+- Mercado de honorários periciais agrônomos estimado: R$ 300M–R$ 600M/ano no Brasil
+
+### Por que Mato Grosso primeiro
+- Estado com maior volume de processos agrários do país
+- Alta concentração de grandes propriedades rurais (alto ticket de honorários)
+- Menor concorrência digital (mercado não-digitalizado)
+- Fundador tem rede de contatos no setor agro de MT
+
+
+## MODELO DE NEGÓCIO
+
+### Proposta de monetização (a definir/validar)
+
+Opção A — Assinatura mensal SaaS:
+  - Plano Básico: R$ 197/mês (alertas de processos, 1 região IMEA)
+  - Plano Profissional: R$ 397/mês (todas as regiões, dados geoespaciais, histórico)
+  - Plano Escritório: R$ 897/mês (multi-usuário, API, relatórios exportáveis)
+
+Opção B — Pay-per-lead:
+  - Perito paga por processo qualificado visualizado (R$ 15–50 por lead)
+
+Opção C — Híbrido assinatura + comissão sobre perícia aceita
+
+### Custo de infraestrutura estimado (mensal)
+  - Servidor cloud (VPS ou Railway/Render): R$ 150–300/mês
+  - PostgreSQL/PostGIS gerenciado: R$ 100–200/mês
+  - Redis: R$ 50/mês
+  - Total infra: ~R$ 400/mês
+
+### Unit economics (projeção)
+  - CAC estimado (inicial, outbound): R$ 200–400/cliente
+  - LTV estimado (12 meses × R$ 297): ~R$ 3.564
+  - LTV/CAC ratio: ~8–18x (favorável)
+
+
+## TECNOLOGIA
+
+Stack atual (produção-ready):
+- Backend: FastAPI (Python 3.11), async, REST API
+- Banco: PostgreSQL 15 + PostGIS 3.3 (dados geoespaciais)
+- Filas: Celery + Redis (coletas automáticas agendadas)
+- Frontend: HTML/JS + Leaflet.js (mapa interativo)
+- Infra: Docker Compose (portável para qualquer cloud)
+
+Coletores ativos:
+- DataJud API (CNJ) — processos judiciais federais e estaduais
+- TJMT portal — tribunal de justiça de MT
+- DOU — Diário Oficial da União
+- DNIT — infraestrutura federal
+- SINFRA-MT — infraestrutura estadual MT
+- INCRA/SIGEF — parcelas rurais georreferenciadas
+- INPE PRODES/DETER — alertas de desmatamento
+- CAR/SICAR — cadastro ambiental rural
+
+Motor de score proprietário:
+- 13 categorias agronômicas com pesos calibrados
+- Detecta: desapropriação, servidão, avaliação de imóvel, conflito fundiário,
+  dano agrícola, georreferenciamento, benfeitorias, reserva legal, APP, etc.
+- Output: score 0–100 + faixa de probabilidade + tipo de perícia sugerida
+
+Estado do código:
+- Todos os bugs críticos documentados já corrigidos
+- Autenticação com bcrypt, tokens de sessão
+- Pool de conexões, sem instâncias redundantes
+- Deduplicação de dados em todos os coletores
+- LGPD: dados pessoais removidos antes de persistir
+
+
+## DIFERENCIAIS COMPETITIVOS
+
+1. Especialização vertical — feito especificamente para perícia agrômica, não genérico
+2. Inteligência geoespacial — cruza processos com polígonos fundiários reais (único no mercado)
+3. Motor de score proprietário — classifica por probabilidade real de nomeação pericial
+4. Cobertura multi-fonte — agrega 8+ fontes de dados públicos num único painel
+5. Alertas proativos — perito recebe notificação antes de verificar manualmente
+6. Foco regional inicial — produto calibrado para a realidade jurídica/fundiária de MT
+
+
+## RISCOS E DESAFIOS
+
+### Riscos técnicos
+- APIs públicas instáveis (INCRA, IBGE, INPE mudam endpoints com frequência)
+  Mitigação: múltiplos fallbacks por fonte, monitoramento de saúde dos coletores
+- Volume de dados geoespaciais pode crescer rapidamente
+  Mitigação: PostGIS com índices espaciais, paginação nos GeoJSONs
+
+### Riscos de mercado
+- Peritos podem resistir a pagar por software (cultura do setor)
+  Mitigação: demonstrar ROI direto (1 perícia paga = 1–2 anos de assinatura)
+- Tribunais podem mudar APIs de acesso público
+  Mitigação: múltiplas fontes por tipo de dado
+- Concorrente grande (LexisNexis, Projuris) pode entrar no nicho
+  Mitigação: especialização profunda e velocidade de execução
+
+### Riscos regulatórios
+- Dados do DataJud/CNJ são públicos mas uso comercial precisa de atenção ao ToS
+- LGPD: dados pessoais de partes processuais precisam ser tratados com cuidado
+  (já implementado: remoção de CPF/CNPJ antes de persistir)
+
+
+## TRAÇÃO ATUAL
+
+- Produto: versão funcional com todos os módulos operacionais
+- Clientes pagantes: 0 (pré-revenue)
+- Usuários beta: não iniciado
+- Validações de mercado feitas: informal (conversas com peritos conhecidos)
+- Parcerias: nenhuma formalizada
+
+
+## PRÓXIMOS PASSOS PLANEJADOS
+
+1. Validação com 5–10 peritos beta (gratuito por 30 dias)
+2. Coletar feedback sobre quais alertas geraram valor real
+3. Calibrar motor de score com dados reais de nomeações
+4. Definir pricing com base na percepção de valor dos beta users
+5. Lançar plano pago para os primeiros 20 clientes
+6. Avaliar expansão para outros estados (Goiás, Pará, São Paulo)
+
+
+## PERGUNTAS PARA O AI CO-FOUNDER AVALIAR
+
+1. Este mercado tem tamanho suficiente para um SaaS rentável e escalável?
+2. O modelo de assinatura faz sentido ou pay-per-lead seria mais adequado para esse perfil de cliente?
+3. Quais são os maiores riscos de go-to-market para esse tipo de produto B2B vertical no Brasil?
+4. Qual canal de aquisição de clientes faz mais sentido: direto (LinkedIn/WhatsApp), parceria com CREAs, ou conteúdo?
+5. Faz sentido focar em MT ou já lançar nacional desde o início?
+6. Quais métricas devo priorizar para provar product-market fit nesse nicho?
+7. Há algum pivô óbvio que eu deveria considerar com essa base tecnológica?
+8. Qual o maior erro que fundadores de SaaS B2B vertical cometem nessa fase?
+
+
+## FUNDADOR
+
+- Localização: Mato Grosso, Brasil
+- Background: desenvolvedor de software com interesse no setor agro/jurídico de MT
+- Stack dominado: Python, FastAPI, PostgreSQL/PostGIS, Docker
+- Motivação: automatizar um processo manual que peritos conhecidos reclamam diariamente
+- Dedicação atual: projeto paralelo (sem co-fundador ainda)
+
+======================================================
+FIM DO DOCUMENTO
+======================================================

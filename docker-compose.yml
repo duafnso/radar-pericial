@@ -1,0 +1,113 @@
+x-app-env: &app-env
+  DATABASE_URL: postgresql://radar:radar123@db:5432/radar_pericial
+  REDIS_URL: redis://redis:6379/0
+  PYTHONPATH: /app
+  LOG_LEVEL: info
+
+x-app-build: &app-build
+  build:
+    context: .
+    dockerfile: Dockerfile
+  volumes:
+    - ./:/app
+  env_file:
+    - .env
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+  networks:
+    - radar_network
+  restart: unless-stopped
+
+services:
+  db:
+    image: postgis/postgis:15-3.3
+    container_name: radar_db
+    restart: unless-stopped
+    shm_size: 256m
+    environment:
+      POSTGRES_DB: radar_pericial
+      POSTGRES_USER: radar
+      POSTGRES_PASSWORD: radar123
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U radar -d radar_pericial"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - radar_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: radar_redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    networks:
+      - radar_network
+
+  web:
+    <<: *app-build
+    container_name: radar_web
+    environment:
+      <<: *app-env
+    ports:
+      - "8000:8000"
+    command: >
+      uvicorn api.main:app
+      --host 0.0.0.0
+      --port 8000
+      --workers 2
+      --log-level info
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *app-build
+    container_name: radar_worker
+    environment:
+      <<: *app-env
+    command: >
+      celery -A alerts.scheduler worker
+      --loglevel=info --concurrency=2
+      --time-limit=3600
+      --queues=geo,judicial,admin,default
+
+  beat:
+    <<: *app-build
+    container_name: radar_beat
+    environment:
+      <<: *app-env
+    command: >
+      celery -A alerts.scheduler beat
+      --loglevel=info
+      --scheduler celery.beat.PersistentScheduler
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  radar_network:
+    driver: bridge
+    name: radar_network

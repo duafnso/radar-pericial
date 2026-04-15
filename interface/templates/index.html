@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Radar Pericial — Sistema de Inteligência Fundiária</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,500;0,600;0,700;1,400&family=IBM+Plex+Mono:wght@300;400;500&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+:root{
+  --ink:#1a1a18;--ink2:#3a3a36;--ink3:#6b6b65;--ink4:#9a9a92;
+  --field:#2d4a2d;--field2:#3d6b3d;--field-pale:#edf3ed;
+  --clay:#8b5e3c;--clay-pale:#f5ede5;
+  --sand:#c8a96e;--sand-pale:#f9f4ea;
+  --alert:#7a1f1f;--alert-pale:#fdf0f0;
+  --parchment:#fafaf7;--paper:#f5f5f0;
+  --rule:#e2e2da;--rule-dark:#c8c8be;--white:#fff;
+  --fd:'Playfair Display',Georgia,serif;
+  --fm:'IBM Plex Mono','Courier New',monospace;
+  --fs:'Libre Baskerville',Georgia,serif;
+  --sans:'DM Sans',system-ui,sans-serif;
+}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--parchment);color:var(--ink);font-family:var(--sans);font-size:14px;line-height:1.6;-webkit-font-smoothing:antialiased}
+
+/* ── TOPBAR ─────────────────────────────────────── */
+.topbar{position:fixed;top:0;left:0;right:0;z-index:900;background:var(--ink);height:48px;display:flex;align-items:center;border-bottom:1px solid rgba(255,255,255,.08)}
+.topbar-brand{display:flex;flex-direction:column;justify-content:center;padding:0 24px;border-right:1px solid rgba(255,255,255,.1);height:100%;min-width:200px;gap:1px}
+.brand-name{font-family:var(--fd);font-size:15px;font-weight:600;color:#fff;letter-spacing:.02em}
+.brand-sub{font-family:var(--fm);font-size:8px;color:rgba(255,255,255,.3);letter-spacing:.14em;text-transform:uppercase}
+.topbar-nav{display:flex;height:100%;flex:1;overflow-x:auto}
+.topbar-nav a{font-family:var(--fm);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,255,255,.4);text-decoration:none;padding:0 18px;height:100%;display:flex;align-items:center;border-bottom:2px solid transparent;white-space:nowrap;cursor:pointer;transition:color .15s,border-color .15s}
+.topbar-nav a:hover{color:rgba(255,255,255,.8)}
+.topbar-nav a.active{color:#fff;border-bottom-color:var(--field2)}
+.topbar-right{padding:0 20px;display:flex;align-items:center;gap:8px;border-left:1px solid rgba(255,255,255,.1);margin-left:auto}
+.status-dot{width:6px;height:6px;border-radius:50%;background:var(--field2);animation:blink 2.5s ease-in-out infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+.status-txt{font-family:var(--fm);font-size:9px;color:rgba(255,255,255,.3);letter-spacing:.06em}
+
+/* ── SCREENS ─────────────────────────────────────── */
+.screen{display:none;padding-top:48px;min-height:100vh}
+.screen.active{display:block}
+
+/* ── APP SHELL ───────────────────────────────────── */
+.shell{display:flex;min-height:calc(100vh - 48px)}
+.sidebar{width:220px;min-width:220px;background:var(--white);border-right:1px solid var(--rule);display:flex;flex-direction:column;position:sticky;top:48px;height:calc(100vh - 48px);overflow-y:auto}
+.sidebar-section{font-family:var(--fm);font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink4);padding:18px 20px 6px}
+.nav-item{display:flex;align-items:center;gap:9px;padding:9px 20px;font-size:12.5px;color:var(--ink3);cursor:pointer;border-left:2px solid transparent;transition:all .12s}
+.nav-item:hover{color:var(--ink);background:var(--paper)}
+.nav-item.active{color:var(--field);background:var(--field-pale);border-left-color:var(--field);font-weight:500}
+.nav-item svg{flex-shrink:0;opacity:.5}
+.nav-item.active svg{opacity:1}
+.nav-divider{height:1px;background:var(--rule);margin:6px 0}
+.sidebar-footer{margin-top:auto;padding:14px 20px;border-top:1px solid var(--rule);font-family:var(--fm);font-size:9px;color:var(--ink4);letter-spacing:.04em}
+.filter-group{padding:10px 14px;border-bottom:1px solid var(--rule)}
+.filter-label{font-family:var(--fm);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink4);display:block;margin-bottom:5px}
+.filter-cb{display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--ink3);padding:2px 0;cursor:pointer}
+input[type=checkbox]{accent-color:var(--field);cursor:pointer}
+
+/* ── MAIN ────────────────────────────────────────── */
+.main{flex:1;min-width:0;background:var(--parchment)}
+.page-header{background:var(--white);border-bottom:1px solid var(--rule);padding:22px 30px 18px}
+.page-title{font-family:var(--fd);font-size:22px;font-weight:500;color:var(--ink);letter-spacing:-.01em}
+.page-subtitle{font-family:var(--fm);font-size:10px;color:var(--ink4);letter-spacing:.05em;margin-top:4px}
+.page-body{padding:26px 30px}
+.section-label{font-family:var(--fm);font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink4);margin-bottom:12px}
+
+/* ── METRICS GRID ────────────────────────────────── */
+.metric-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden;margin-bottom:26px}
+.metric-cell{background:var(--white);padding:16px 18px}
+.metric-label{font-family:var(--fm);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink4);margin-bottom:7px}
+.metric-val{font-family:var(--fd);font-size:27px;font-weight:600;color:var(--ink);line-height:1}
+.metric-delta{font-family:var(--fm);font-size:9px;margin-top:5px;letter-spacing:.03em}
+.d-up{color:var(--field2)}.d-neu{color:var(--ink4)}.d-down{color:var(--alert)}
+
+/* ── CARDS ───────────────────────────────────────── */
+.card{background:var(--white);border:1px solid var(--rule);border-radius:4px}
+.card-header{padding:14px 18px;border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between}
+.card-title{font-family:var(--fm);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
+.card-body{padding:18px}
+
+/* ── PROCESS CARDS ───────────────────────────────── */
+.process-card{background:var(--white);border:1px solid var(--rule);border-radius:4px;border-left:3px solid var(--rule-dark);padding:16px 18px;transition:border-left-color .15s,background .12s}
+.process-card:hover{background:var(--paper)}
+.process-card.critical{border-left-color:var(--alert)}
+.process-card.high{border-left-color:var(--clay)}
+.process-card.medium{border-left-color:var(--sand)}
+.process-header{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:6px}
+.process-title{font-size:13px;font-weight:500;color:var(--ink)}
+.process-meta{font-family:var(--fm);font-size:10px;color:var(--ink4);margin-top:3px;line-height:1.5}
+.process-excerpt{font-size:12px;color:var(--ink3);margin-top:7px;line-height:1.5}
+.process-actions{display:flex;gap:7px;margin-top:11px}
+.score-big{font-family:var(--fd);font-size:32px;font-weight:600;line-height:1}
+.score-tag{display:inline-flex;align-items:center;font-family:var(--fm);font-size:10px;font-weight:500;padding:2px 7px;border-radius:2px;letter-spacing:.04em}
+.sc-critical{background:var(--alert-pale);color:var(--alert);border:1px solid rgba(122,31,31,.2)}
+.sc-high{background:var(--clay-pale);color:var(--clay);border:1px solid rgba(139,94,60,.2)}
+.sc-medium{background:var(--sand-pale);color:#7a6128;border:1px solid rgba(200,169,110,.3)}
+.sc-low{background:var(--paper);color:var(--ink4);border:1px solid var(--rule)}
+.region-tag{display:inline-block;font-family:var(--fm);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--ink4);border:1px solid var(--rule);padding:1px 6px;border-radius:2px}
+
+/* ── SCORE BARS ──────────────────────────────────── */
+.score-bar-row{display:flex;align-items:center;gap:8px}
+.score-track{width:56px;height:3px;background:var(--rule);border-radius:1px;flex-shrink:0}
+.score-fill{height:100%;border-radius:1px;transition:width .4s ease}
+.score-num{font-family:var(--fm);font-size:11px;font-weight:500;min-width:22px;text-align:right}
+.breakdown-row{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--rule)}
+.breakdown-row:last-child{border-bottom:none}
+.breakdown-label{font-family:var(--fm);font-size:10px;color:var(--ink3)}
+.breakdown-bar-row{display:flex;align-items:center;gap:9px}
+.breakdown-track{width:80px;height:2px;background:var(--rule);border-radius:1px}
+.breakdown-fill{height:100%;border-radius:1px;transition:width .4s}
+.breakdown-val{font-family:var(--fm);font-size:11px;font-weight:500;min-width:22px;text-align:right}
+
+/* ── TABLE ───────────────────────────────────────── */
+.data-table{width:100%;border-collapse:collapse;background:var(--white);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.data-table thead{background:var(--paper);border-bottom:1px solid var(--rule)}
+.data-table th{font-family:var(--fm);font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink4);padding:9px 14px;text-align:left;font-weight:400}
+.data-table td{padding:12px 14px;border-bottom:1px solid rgba(0,0,0,.04);vertical-align:middle;font-size:12.5px}
+.data-table tr:last-child td{border-bottom:none}
+.data-table tr:hover td{background:var(--paper)}
+.td-mono{font-family:var(--fm);font-size:10px;color:var(--ink3)}
+.td-primary{font-weight:500;color:var(--ink)}
+
+/* ── BUTTONS ─────────────────────────────────────── */
+.btn{font-family:var(--fm);font-size:10px;letter-spacing:.06em;padding:7px 13px;border-radius:2px;cursor:pointer;border:1px solid;transition:all .12s;text-transform:uppercase;text-decoration:none;display:inline-flex;align-items:center;gap:5px;line-height:1}
+.btn-primary{background:var(--field);color:#fff;border-color:var(--field)}
+.btn-primary:hover{background:var(--field2);border-color:var(--field2)}
+.btn-secondary{background:transparent;color:var(--ink3);border-color:var(--rule-dark)}
+.btn-secondary:hover{color:var(--ink);border-color:var(--ink3)}
+.btn-ghost{background:transparent;color:var(--ink4);border-color:var(--rule);font-size:9px;padding:5px 9px}
+.btn-ghost:hover{color:var(--ink);border-color:var(--rule-dark)}
+.btn-danger{background:transparent;color:var(--alert);border-color:rgba(122,31,31,.3)}
+.btn-danger:hover{background:var(--alert-pale)}
+
+/* ── FORMS ───────────────────────────────────────── */
+.form-group{margin-bottom:14px}
+.form-label{font-family:var(--fm);font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);display:block;margin-bottom:5px}
+.form-input{width:100%;background:var(--white);border:1px solid var(--rule-dark);border-radius:2px;padding:8px 11px;font-family:var(--sans);font-size:13px;color:var(--ink);outline:none;transition:border-color .12s}
+.form-input:focus{border-color:var(--field)}
+.form-input::placeholder{color:var(--ink4)}
+.form-select{width:100%;background:var(--white);border:1px solid var(--rule-dark);border-radius:2px;padding:7px 11px;font-family:var(--fm);font-size:11px;color:var(--ink);outline:none;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%239a9a92'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center}
+.form-textarea{resize:vertical;min-height:88px;font-family:var(--fm);font-size:12px}
+
+/* ── SCORE RESULT ────────────────────────────────── */
+.score-display{text-align:center;padding:28px 18px;border-bottom:1px solid var(--rule)}
+.score-numeral{font-family:var(--fd);font-size:80px;font-weight:700;line-height:1;transition:color .3s}
+.score-faixa{font-family:var(--fm);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3);margin-top:9px}
+.score-type{font-family:var(--fs);font-size:14px;color:var(--ink);margin-top:5px;font-style:italic}
+
+/* ── SPECIALTY TAGS ──────────────────────────────── */
+.specialty-tag{display:inline-block;font-family:var(--fm);font-size:9px;color:var(--field);border:1px solid rgba(45,74,45,.25);background:var(--field-pale);padding:1px 6px;border-radius:1px;margin:2px 2px 0 0;letter-spacing:.04em}
+
+/* ── PERITO GRID ─────────────────────────────────── */
+.perito-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;background:var(--rule);border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+.perito-cell{background:var(--white);padding:18px}
+.perito-monogram{width:40px;height:40px;background:var(--paper);border:1px solid var(--rule-dark);border-radius:2px;display:flex;align-items:center;justify-content:center;font-family:var(--fd);font-size:14px;font-weight:600;color:var(--ink3);margin-bottom:11px;flex-shrink:0}
+.perito-name{font-family:var(--fs);font-size:14px;font-weight:700;color:var(--ink)}
+.perito-credentials{font-family:var(--fm);font-size:9px;color:var(--ink4);letter-spacing:.05em;margin-top:2px;text-transform:uppercase}
+.score-profissional{font-family:var(--fd);font-size:30px;font-weight:600;color:var(--field);margin-top:10px;line-height:1}
+
+/* ── TIMELINE ────────────────────────────────────── */
+.timeline-item{display:flex;gap:14px;padding:13px 0;border-bottom:1px solid var(--rule)}
+.timeline-item:last-child{border-bottom:none}
+.timeline-indicator{width:2px;border-radius:1px;flex-shrink:0;margin-top:2px}
+.timeline-time{font-family:var(--fm);font-size:10px;color:var(--ink4);min-width:38px;padding-top:1px}
+.timeline-content{flex:1}
+.timeline-title{font-size:13px;font-weight:500;color:var(--ink)}
+.timeline-sub{font-family:var(--fm);font-size:10px;color:var(--ink4);margin-top:2px;line-height:1.5}
+.timeline-body{font-family:var(--fm);font-size:10px;color:var(--ink3);background:var(--paper);border:1px solid var(--rule);border-radius:2px;padding:7px 10px;margin-top:7px;line-height:1.6;white-space:pre-wrap}
+.ind-critical{background:var(--alert)}.ind-high{background:var(--clay)}.ind-medium{background:var(--sand)}.ind-ok{background:var(--field2)}.ind-neu{background:var(--rule-dark)}
+
+/* ── CHANNEL ROWS ────────────────────────────────── */
+.channel-row{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-bottom:1px solid var(--rule)}
+.channel-row:last-child{border-bottom:none}
+.channel-name{font-size:13px;font-weight:500;color:var(--ink)}
+.channel-detail{font-family:var(--fm);font-size:10px;color:var(--ink4);margin-top:2px}
+.status-active{font-family:var(--fm);font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:var(--field2);display:flex;align-items:center;gap:5px}
+.status-active::before{content:'';width:5px;height:5px;border-radius:50%;background:var(--field2);display:inline-block}
+
+/* ── MAP ─────────────────────────────────────────── */
+#map{height:calc(100vh - 48px - 90px);min-height:480px;border-radius:4px;border:1px solid var(--rule);background:var(--paper)}
+.leaflet-popup-content-wrapper{border-radius:4px!important;box-shadow:0 4px 16px rgba(0,0,0,.12)!important;border:1px solid var(--rule)!important;font-family:var(--sans)!important}
+.leaflet-popup-content{margin:0!important;padding:0!important}
+.map-popup{font-family:var(--sans);min-width:220px}
+.map-popup-header{background:var(--ink);color:#fff;padding:8px 12px;font-family:var(--fd);font-size:13px;font-weight:500;border-radius:4px 4px 0 0}
+.map-popup-body{padding:10px 12px;border-radius:0 0 4px 4px}
+.map-popup-row{display:flex;justify-content:space-between;padding:3px 0;font-size:11px}
+.map-popup-key{color:var(--ink4);font-family:var(--fm);font-size:9px;text-transform:uppercase;letter-spacing:.06em}
+.map-popup-val{color:var(--ink);font-weight:500;font-size:11px}
+
+/* ── LOADING / EMPTY STATES ──────────────────────── */
+.loading{text-align:center;padding:48px 20px;font-family:var(--fm);font-size:11px;color:var(--ink4);letter-spacing:.08em}
+.empty-state{text-align:center;padding:48px 20px;color:var(--ink4)}
+.empty-state p{font-family:var(--fm);font-size:11px;margin-top:8px}
+.empty-state code{background:var(--paper);padding:2px 6px;border-radius:2px;font-size:10px;border:1px solid var(--rule)}
+
+/* ── MODAL ───────────────────────────────────────── */
+.modal-backdrop{position:fixed;inset:0;background:rgba(0,0,0,.35);z-index:800;display:none;align-items:center;justify-content:center}
+.modal-backdrop.open{display:flex}
+.modal{background:var(--white);border:1px solid var(--rule);border-radius:4px;width:480px;max-width:90vw;box-shadow:0 8px 32px rgba(0,0,0,.12)}
+.modal-header{padding:18px 22px;border-bottom:1px solid var(--rule);display:flex;align-items:center;justify-content:space-between}
+.modal-title{font-family:var(--fd);font-size:16px;font-weight:500}
+.modal-close{background:none;border:none;cursor:pointer;color:var(--ink4);font-size:18px;line-height:1;padding:2px 6px}
+.modal-close:hover{color:var(--ink)}
+.modal-body{padding:22px}
+.modal-footer{padding:14px 22px;border-top:1px solid var(--rule);display:flex;justify-content:flex-end;gap:8px}
+
+/* ── TOAST ───────────────────────────────────────── */
+.toast{position:fixed;bottom:24px;right:24px;background:var(--ink);color:#fff;font-family:var(--fm);font-size:11px;padding:11px 18px;border-radius:2px;z-index:1000;opacity:0;transform:translateY(8px);transition:opacity .2s,transform .2s;pointer-events:none;letter-spacing:.04em}
+.toast.show{opacity:1;transform:none}
+
+/* ── PAGINATION ──────────────────────────────────── */
+.pagination{display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+.pagination-info{font-family:var(--fm);font-size:10px;color:var(--ink4)}
+.pagination-btns{display:flex;gap:6px}
+
+/* ── ROW/COL HELPERS ─────────────────────────────── */
+.row{display:flex;gap:18px}.col{flex:1;min-width:0}.col2{flex:2;min-width:0}.col3{flex:3;min-width:0}
+.gap-10{display:flex;flex-direction:column;gap:10px}
+.gap-14{display:flex;flex-direction:column;gap:14px}
+.mt-16{margin-top:16px}.mb-16{margin-bottom:16px}.mb-8{margin-bottom:8px}
+.flex-between{display:flex;align-items:center;justify-content:space-between}
+
+/* ── LOGIN SCREEN ────────────────────────────────── */
+#login-screen {
+  position:fixed;inset:0;z-index:9999;
+  background:var(--parchment);
+  display:flex;align-items:center;justify-content:center;
+}
+#login-screen.hidden { display:none; }
+.login-box {
+  width:360px;background:var(--white);border:1px solid var(--rule);
+  border-radius:4px;padding:36px;box-shadow:0 12px 48px rgba(0,0,0,.08);
+}
+.login-brand {
+  font-family:var(--fd);font-size:24px;color:var(--ink);
+  text-align:center;margin-bottom:6px;
+}
+.login-sub {
+  font-family:var(--fm);font-size:10px;letter-spacing:.15em;
+  text-transform:uppercase;color:var(--ink4);text-align:center;margin-bottom:32px;
+}
+.login-btn {
+  width:100%;justify-content:center;padding:10px;font-size:12px;margin-top:20px;
+}
+</style>
+</head>
+<body>
+
+<div id="login-screen" class="login-screen">
+  <div class="login-box">
+    <div class="login-brand">Radar Pericial</div>
+    <div class="login-sub">Acesso Restrito</div>
+    <form id="login-form" onsubmit="handleLogin(event)">
+      <div class="form-group">
+        <label class="form-label">Usuário</label>
+        <input class="form-input" id="login-user" required autocomplete="username">
+      </div>
+      <div class="form-group" style="margin-bottom:0">
+        <label class="form-label">Senha</label>
+        <input type="password" class="form-input" id="login-pass" required autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn btn-primary login-btn" id="login-btn-el">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<div id="app-container" style="display:none">
+<!-- TOPBAR -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-name">Radar Pericial</div>
+    <div class="brand-sub">Inteligência Fundiária</div>
+  </div>
+  <nav class="topbar-nav">
+    <a class="active" onclick="nav('dashboard')">Painel</a>
+    <a onclick="nav('mapa')">Mapa Territorial</a>
+    <a onclick="nav('processos')">Radar de Processos</a>
+    <a onclick="nav('administrativo')">Radar Administrativo</a>
+    <a onclick="nav('score')">Calculadora Pericial</a>
+    <a onclick="nav('peritos')">Corpo Pericial</a>
+    <a onclick="nav('alertas')">Central de Alertas</a>
+  </nav>
+  <div class="topbar-right">
+    <select id="global-regiao" class="form-select" style="background:var(--ink2);color:#fff;border-color:var(--ink3);width:160px;font-size:11px;padding:4px 10px;height:26px;outline:none" onchange="changeGlobalRegion(this.value)">
+      <option value="">🌎 Mato Grosso (Todo)</option>
+      <option value="Médio-Norte">📍 Médio-Norte</option>
+      <option value="Norte">📍 Norte</option>
+      <option value="Centro-Sul">📍 Centro-Sul</option>
+      <option value="Oeste">📍 Oeste</option>
+      <option value="Leste">📍 Leste</option>
+      <option value="Sudoeste">📍 Sudoeste</option>
+    </select>
+    <div style="width:1px;height:16px;background:rgba(255,255,255,0.1);margin:0 10px"></div>
+    <div class="status-dot"></div>
+    <span class="status-txt" id="status-txt">Sistema ativo · MT</span>
+    <div style="width:1px;height:16px;background:rgba(255,255,255,0.1);margin:0 10px"></div>
+    <button class="btn btn-ghost" style="color:var(--ink4);padding:0" onclick="doLogout()">Sair</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TELA 1 — PAINEL
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen active" id="screen-dashboard">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-section">Navegação</div>
+    <div class="nav-item active" onclick="nav('dashboard')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" stroke="currentColor" stroke-width="1.2"/><rect x="9" y="1" width="6" height="6" stroke="currentColor" stroke-width="1.2"/><rect x="1" y="9" width="6" height="6" stroke="currentColor" stroke-width="1.2"/><rect x="9" y="9" width="6" height="6" stroke="currentColor" stroke-width="1.2"/></svg>Painel</div>
+    <div class="nav-item" onclick="nav('mapa')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 2C5.24 2 3 4.24 3 7c0 4.25 5 8 5 8s5-3.75 5-8c0-2.76-2.24-5-5-5zm0 6.5a1.5 1.5 0 110-3 1.5 1.5 0 010 3z" stroke="currentColor" stroke-width="1.2"/></svg>Mapa Territorial</div>
+    <div class="nav-item" onclick="nav('processos')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h8M2 12h10" stroke="currentColor" stroke-width="1.2" stroke-linecap="square"/></svg>Radar de Processos</div>
+    <div class="nav-item" onclick="nav('administrativo')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="5" height="12" stroke="currentColor" stroke-width="1.2"/><path d="M9 5h5M9 8h5M9 11h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="square"/></svg>Radar Administrativo</div>
+    <div class="nav-divider"></div>
+    <div class="sidebar-section">Ferramentas</div>
+    <div class="nav-item" onclick="nav('score')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="square"/></svg>Calculadora Pericial</div>
+    <div class="nav-item" onclick="nav('alertas')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 2a4 4 0 014 4v3l1 2H3l1-2V6a4 4 0 014-4zM6.5 13a1.5 1.5 0 003 0" stroke="currentColor" stroke-width="1.2"/></svg>Central de Alertas</div>
+    <div class="nav-item" onclick="nav('peritos')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 14c0-3.31 2.69-6 6-6s6 2.69 6 6" stroke="currentColor" stroke-width="1.2"/></svg>Corpo Pericial</div>
+    <div class="sidebar-footer" id="sidebar-footer">Mato Grosso · v2.0<br>Carregando...</div>
+  </aside>
+  <main class="main">
+    <div class="page-header flex-between">
+      <div>
+        <div class="page-title">Painel de Inteligência Pericial</div>
+        <div class="page-subtitle" id="dash-subtitle">Mato Grosso · Carregando...</div>
+      </div>
+      <button class="btn btn-ghost" onclick="refreshDashboard()">Atualizar dados</button>
+    </div>
+    <div class="page-body">
+      <div class="metric-grid" id="dash-metrics">
+        <div class="metric-cell"><div class="metric-label">Processos</div><div class="metric-val" id="m-total">—</div><div class="metric-delta d-neu" id="m-total-d">—</div></div>
+        <div class="metric-cell"><div class="metric-label">Janela Quente</div><div class="metric-val" id="m-quentes" style="color:var(--alert)">—</div><div class="metric-delta d-neu">Score ≥ 75</div></div>
+        <div class="metric-cell"><div class="metric-label">Provável Perícia</div><div class="metric-val" id="m-provaveis" style="color:var(--clay)">—</div><div class="metric-delta d-neu">Score 50–74</div></div>
+        <div class="metric-cell"><div class="metric-label">Imóveis SIGEF</div><div class="metric-val" id="m-parcelas">—</div><div class="metric-delta d-neu">MT</div></div>
+        <div class="metric-cell"><div class="metric-label">Portarias D.O.</div><div class="metric-val" id="m-portarias">—</div><div class="metric-delta d-neu">30 dias</div></div>
+        <div class="metric-cell"><div class="metric-label">Alertas Enviados</div><div class="metric-val" id="m-alertas">—</div><div class="metric-delta d-neu">Hoje</div></div>
+      </div>
+      <div class="row">
+        <div class="col2">
+          <div class="section-label mb-8">Casos com ação imediata recomendada</div>
+          <div class="gap-10" id="dash-processos"><div class="loading">Carregando processos...</div></div>
+        </div>
+        <div class="col">
+          <div class="section-label mb-8">Distribuição por faixa de score</div>
+          <div class="card mb-16">
+            <div class="card-body" id="dist-container">
+              <div class="loading">Carregando...</div>
+            </div>
+          </div>
+          <div class="section-label mb-8">Concentração por região IMEA</div>
+          <div class="card">
+            <div class="card-body" id="regioes-container">
+              <div class="loading">Carregando...</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TELA 2 — MAPA TERRITORIAL
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-mapa">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-section">Camadas</div>
+    <div class="filter-group">
+      <label class="filter-cb"><input type="checkbox" id="layer-municipios" checked onchange="toggleLayer('municipios')"> Limites Municipais</label>
+      <label class="filter-cb"><input type="checkbox" id="layer-desapropriadas" checked onchange="toggleLayer('desapropriadas')"> Imóveis em Desapropriação</label>
+      <label class="filter-cb"><input type="checkbox" id="layer-todos" onchange="toggleLayer('todos')"> SIGEF — Todos os Imóveis</label>
+      <label class="filter-cb"><input type="checkbox" id="layer-assentamentos" onchange="toggleLayer('assentamentos')"> Assentamentos INCRA</label>
+      <label class="filter-cb"><input type="checkbox" id="layer-prodes" onchange="toggleLayer('prodes')"> Desmatamento PRODES</label>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Município</label>
+      <input class="form-input" id="map-filter-mun" placeholder="Filtrar município..." style="font-size:12px;padding:7px 10px" oninput="debounce(reloadMapLayers,600)()">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Faixa de Score</label>
+      <select class="form-select" id="map-filter-faixa" onchange="reloadMapLayers()">
+        <option value="">Todas as faixas</option>
+        <option value="janela_quente">Janela Quente (75–100)</option>
+        <option value="provavel">Provável Perícia (50–74)</option>
+        <option value="observacao">Observação (25–49)</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Legenda</label>
+      <div style="display:flex;flex-direction:column;gap:6px;margin-top:4px">
+        <div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink3)"><div style="width:14px;height:4px;background:var(--alert);border-radius:1px"></div>Desapropriado</div>
+        <div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink3)"><div style="width:14px;height:4px;background:var(--clay);border-radius:1px"></div>Em processo</div>
+        <div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink3)"><div style="width:14px;height:4px;background:var(--sand);border-radius:1px"></div>Vistoriado</div>
+        <div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink3)"><div style="width:14px;height:4px;border:1px solid var(--rule-dark);border-radius:1px"></div>SIGEF certificado</div>
+        <div style="display:flex;align-items:center;gap:7px;font-size:11px;color:var(--ink3)"><div style="width:14px;height:4px;background:var(--field);opacity:.6;border-radius:1px"></div>Assentamento</div>
+      </div>
+    </div>
+    <div style="padding:12px 14px;margin-top:auto">
+      <button class="btn btn-secondary" style="width:100%;justify-content:center" onclick="exportGeoJSON()">Exportar GeoJSON</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header flex-between">
+      <div>
+        <div class="page-title">Mapa Territorial</div>
+        <div class="page-subtitle" id="map-subtitle">Carregando...</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="map.setView([-12.5,-55.5],6)">Centralizar MT</button>
+        <button class="btn btn-ghost" onclick="reloadMapLayers()">Recarregar camadas</button>
+      </div>
+    </div>
+    <div style="padding:16px 20px">
+      <div id="map"></div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TELA 3 — RADAR DE PROCESSOS
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-processos">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="filter-group">
+      <label class="filter-label">Faixa de Score</label>
+      <select class="form-select" id="proc-faixa" onchange="loadProcessos()">
+        <option value="">Todas as faixas</option>
+        <option value="janela_quente">Janela Quente</option>
+        <option value="provavel">Provável Perícia</option>
+        <option value="observacao">Observação</option>
+        <option value="frio">Frio</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Região IMEA</label>
+      <select class="form-select" id="proc-regiao" onchange="loadProcessos()">
+        <option value="">Todas as regiões</option>
+        <option>Médio-Norte</option><option>Norte</option>
+        <option>Centro-Sul</option><option>Oeste</option>
+        <option>Leste</option><option>Sudoeste</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Município</label>
+      <input class="form-input" id="proc-municipio" placeholder="Digite o município..." style="font-size:12px;padding:7px 10px" oninput="debounce(loadProcessos,500)()">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Classe Processual</label>
+      <select class="form-select" id="proc-classe" onchange="loadProcessos()">
+        <option value="">Todas as classes</option>
+        <option>Desapropriação</option>
+        <option>Servidão administrativa</option>
+        <option>Ação possessória</option>
+        <option>Dano ambiental</option>
+        <option>Usucapião rural</option>
+      </select>
+    </div>
+    <div style="padding:12px 14px;display:flex;flex-direction:column;gap:6px">
+      <button class="btn btn-secondary" style="width:100%;justify-content:center" onclick="exportCSV('processos')">Exportar CSV</button>
+      <button class="btn btn-secondary" style="width:100%;justify-content:center" onclick="exportGeoJSONProcessos()">Exportar GeoJSON</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header flex-between">
+      <div>
+        <div class="page-title">Radar de Processos Judiciais</div>
+        <div class="page-subtitle" id="proc-subtitle">Carregando...</div>
+      </div>
+      <button class="btn btn-ghost" onclick="loadProcessos()">Atualizar</button>
+    </div>
+    <div class="page-body">
+      <div style="overflow:hidden;border-radius:4px" id="proc-table-wrap">
+        <div class="loading">Carregando processos...</div>
+      </div>
+      <div class="pagination" id="proc-pagination" style="display:none">
+        <span class="pagination-info" id="proc-info"></span>
+        <div class="pagination-btns">
+          <button class="btn btn-ghost" id="btn-prev" onclick="procPage(-1)" disabled>Anterior</button>
+          <button class="btn btn-ghost" id="btn-next" onclick="procPage(1)">Próximo</button>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TELA 4 — RADAR ADMINISTRATIVO
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-administrativo">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-section">Fontes</div>
+    <div class="filter-group">
+      <label class="filter-cb"><input type="checkbox" id="adm-dou" checked onchange="loadAdministrativo()"> Diário Oficial da União</label>
+      <label class="filter-cb"><input type="checkbox" id="adm-iomat" checked onchange="loadAdministrativo()"> Diário Oficial MT</label>
+      <label class="filter-cb"><input type="checkbox" id="adm-dnit" checked onchange="loadAdministrativo()"> DNIT</label>
+      <label class="filter-cb"><input type="checkbox" id="adm-sinfra" onchange="loadAdministrativo()"> SINFRA-MT</label>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Período</label>
+      <select class="form-select" id="adm-dias" onchange="loadAdministrativo()">
+        <option value="30">Últimos 30 dias</option>
+        <option value="60">Últimos 60 dias</option>
+        <option value="90">Últimos 90 dias</option>
+      </select>
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Município</label>
+      <input class="form-input" id="adm-municipio" placeholder="Filtrar município..." style="font-size:12px;padding:7px 10px" oninput="debounce(loadAdministrativo,500)()">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Faixa de Score</label>
+      <select class="form-select" id="adm-faixa" onchange="loadAdministrativo()">
+        <option value="">Todas</option>
+        <option value="janela_quente">Janela Quente</option>
+        <option value="provavel">Provável Perícia</option>
+        <option value="observacao">Observação</option>
+      </select>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header flex-between">
+      <div>
+        <div class="page-title">Radar Administrativo</div>
+        <div class="page-subtitle" id="adm-subtitle">Eventos do D.O.U., IOMAT, DNIT e SINFRA-MT</div>
+      </div>
+      <button class="btn btn-ghost" onclick="loadAdministrativo()">Atualizar</button>
+    </div>
+    <div class="page-body">
+      <div class="gap-10" id="adm-list"><div class="loading">Carregando eventos...</div></div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TELA 5 — CALCULADORA PERICIAL
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-score">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-section">Histórico de Cálculos</div>
+    <div id="score-history" style="padding:8px 10px;display:flex;flex-direction:column;gap:6px">
+      <div style="font-family:var(--fm);font-size:10px;color:var(--ink4);padding:8px 4px">Nenhum cálculo realizado ainda.</div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header">
+      <div class="page-title">Calculadora de Score Pericial</div>
+      <div class="page-subtitle">Insira os dados para calcular a probabilidade de geração de perícia agronômica</div>
+    </div>
+    <div class="page-body">
+      <div class="row">
+        <div class="col2">
+          <div class="card">
+            <div class="card-header"><span class="card-title">Dados do processo ou evento</span></div>
+            <div class="card-body">
+              <div class="row mb-16">
+                <div class="col">
+                  <div class="form-group">
+                    <label class="form-label">Classe Processual</label>
+                    <input class="form-input" id="calc-classe" placeholder="ex: desapropriação, servidão administrativa...">
+                  </div>
+                </div>
+                <div class="col">
+                  <div class="form-group">
+                    <label class="form-label">Assunto Principal</label>
+                    <input class="form-input" id="calc-assunto" placeholder="ex: avaliação de imóvel rural...">
+                  </div>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Movimentações Processuais (uma por linha)</label>
+                <textarea class="form-input form-textarea" id="calc-movs" placeholder="Nomeação de perito&#10;Especificação de provas&#10;Apresentação de quesitos"></textarea>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Texto livre — trecho da publicação ou movimentação</label>
+                <textarea class="form-input form-textarea" id="calc-texto" style="min-height:100px" placeholder="Cole o texto do Diário Oficial, movimentação processual ou descrição do evento..."></textarea>
+              </div>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-primary" onclick="calcularScore()">Calcular Score</button>
+                <button class="btn btn-secondary" onclick="limparCalc()">Limpar campos</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="card mb-16" id="score-result-card">
+            <div class="score-display">
+              <div style="font-family:var(--fm);font-size:9px;letter-spacing:.15em;text-transform:uppercase;color:var(--ink4);margin-bottom:10px">Resultado</div>
+              <div class="score-numeral" id="score-num" style="color:var(--ink4)">—</div>
+              <div class="score-faixa" id="score-faixa">Aguardando cálculo</div>
+              <div class="score-type" id="score-tipo"></div>
+            </div>
+            <div class="card-body">
+              <div class="section-label mb-8">Detalhamento por componente</div>
+              <div id="score-breakdown">
+                <div class="breakdown-row"><div class="breakdown-label">Classe processual (20%)</div><div class="breakdown-bar-row"><div class="breakdown-track"><div class="breakdown-fill" id="bf-classe" style="width:0%;background:var(--ink4)"></div></div><div class="breakdown-val" id="bv-classe">—</div></div></div>
+                <div class="breakdown-row"><div class="breakdown-label">Assunto (20%)</div><div class="breakdown-bar-row"><div class="breakdown-track"><div class="breakdown-fill" id="bf-assunto" style="width:0%;background:var(--ink4)"></div></div><div class="breakdown-val" id="bv-assunto">—</div></div></div>
+                <div class="breakdown-row"><div class="breakdown-label">Movimentações (25%)</div><div class="breakdown-bar-row"><div class="breakdown-track"><div class="breakdown-fill" id="bf-movs" style="width:0%;background:var(--ink4)"></div></div><div class="breakdown-val" id="bv-movs">—</div></div></div>
+                <div class="breakdown-row"><div class="breakdown-label">Publicação / texto (20%)</div><div class="breakdown-bar-row"><div class="breakdown-track"><div class="breakdown-fill" id="bf-pub" style="width:0%;background:var(--ink4)"></div></div><div class="breakdown-val" id="bv-pub">—</div></div></div>
+                <div class="breakdown-row"><div class="breakdown-label">Evento administrativo (15%)</div><div class="breakdown-bar-row"><div class="breakdown-track"><div class="breakdown-fill" id="bf-adm" style="width:0%;background:var(--ink4)"></div></div><div class="breakdown-val" id="bv-adm">—</div></div></div>
+              </div>
+              <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--rule)">
+                <div class="section-label" style="margin-bottom:7px">Categorias detectadas</div>
+                <div id="score-cats"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TELA 6 — CORPO PERICIAL
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-peritos">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="filter-group">
+      <label class="filter-label">Buscar profissional</label>
+      <input class="form-input" id="per-busca" placeholder="Nome ou registro CREA..." style="font-size:12px;padding:7px 10px" oninput="debounce(loadPeritos,400)()">
+    </div>
+    <div class="filter-group">
+      <label class="filter-label">Região IMEA</label>
+      <select class="form-select" id="per-regiao" onchange="loadPeritos()">
+        <option value="">Todas as regiões</option>
+        <option>Médio-Norte</option><option>Norte</option>
+        <option>Centro-Sul</option><option>Oeste</option>
+        <option>Leste</option><option>Sudoeste</option>
+      </select>
+    </div>
+    <div style="padding:12px 14px">
+      <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="openModalPerito()">Cadastrar profissional</button>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header flex-between">
+      <div>
+        <div class="page-title">Corpo Pericial</div>
+        <div class="page-subtitle" id="peritos-subtitle">Carregando...</div>
+      </div>
+      <button class="btn btn-ghost" onclick="loadPeritos()">Atualizar</button>
+    </div>
+    <div class="page-body">
+      <div class="perito-grid" id="peritos-grid"><div class="loading" style="grid-column:1/-1">Carregando profissionais...</div></div>
+    </div>
+  </main>
+</div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════
+     TELA 7 — CENTRAL DE ALERTAS
+     ═══════════════════════════════════════════════════════ -->
+<div class="screen" id="screen-alertas">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-section">Canais Ativos</div>
+    <div class="filter-group">
+      <label class="filter-cb"><input type="checkbox" checked> Telegram</label>
+      <label class="filter-cb"><input type="checkbox" checked> E-mail</label>
+      <label class="filter-cb"><input type="checkbox"> Webhook / Slack</label>
+    </div>
+    <div class="sidebar-section">Disparar para</div>
+    <div class="filter-group">
+      <label class="filter-cb"><input type="checkbox" checked> Janela quente (75–100)</label>
+      <label class="filter-cb"><input type="checkbox" checked> Provável perícia (50–74)</label>
+      <label class="filter-cb"><input type="checkbox"> Observação (25–49)</label>
+    </div>
+    <div class="nav-divider"></div>
+    <div style="padding:14px 16px">
+      <div class="section-label mb-8">Estatísticas</div>
+      <div id="alert-stats"><div class="loading">Carregando...</div></div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header flex-between">
+      <div>
+        <div class="page-title">Central de Alertas</div>
+        <div class="page-subtitle" id="alertas-subtitle">Carregando...</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <div class="status-active" id="telegram-status">Telegram</div>
+        <button class="btn btn-ghost" onclick="loadAlertas()">Atualizar</button>
+      </div>
+    </div>
+    <div class="page-body">
+      <div class="row">
+        <div class="col2">
+          <div class="section-label mb-8">Registro de alertas recentes</div>
+          <div class="card">
+            <div class="card-body" id="alertas-timeline"><div class="loading">Carregando...</div></div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="section-label mb-8">Configuração de canais</div>
+          <div class="card mb-16">
+            <div class="card-body" style="padding:4px 18px">
+              <div class="channel-row"><div><div class="channel-name">Telegram</div><div class="channel-detail" id="tg-detail">Não configurado</div></div><div class="status-active" id="tg-status">Ativo</div></div>
+              <div class="channel-row"><div><div class="channel-name">E-mail</div><div class="channel-detail" id="email-detail">Não configurado</div></div><div class="status-active">Ativo</div></div>
+              <div class="channel-row"><div><div class="channel-name">Webhook / Slack</div><div class="channel-detail">Opcional</div></div><button class="btn btn-ghost">Configurar</button></div>
+            </div>
+          </div>
+          <div class="section-label mb-8">Próximas coletas agendadas</div>
+          <div class="card">
+            <div class="card-body" style="padding:4px 18px">
+              <div class="channel-row"><div><div class="channel-name">Coleta judicial (DataJud)</div><div class="channel-detail">Diária às 06h00 (Cuiabá)</div></div><div class="status-active">Agendado</div></div>
+              <div class="channel-row"><div><div class="channel-name">Coleta administrativa (D.O.)</div><div class="channel-detail">Diária às 07h00 (Cuiabá)</div></div><div class="status-active">Agendado</div></div>
+              <div class="channel-row"><div><div class="channel-name">Recálculo de scores</div><div class="channel-detail">Diário às 08h00 (Cuiabá)</div></div><div class="status-active">Agendado</div></div>
+              <div class="channel-row"><div><div class="channel-name">Coleta geoespacial (SIGEF)</div><div class="channel-detail">A cada 12 horas</div></div><div class="status-active">Agendado</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+</div>
+<!-- FIM APP CONTAINER -->
+
+<!-- MODAL — Cadastrar Perito -->
+<div class="modal-backdrop" id="modal-perito">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Cadastrar Profissional</div>
+      <button class="modal-close" onclick="closeModalPerito()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="row mb-16">
+        <div class="col">
+          <div class="form-group">
+            <label class="form-label">Nome completo</label>
+            <input class="form-input" id="p-nome" placeholder="Nome do profissional">
+          </div>
+        </div>
+        <div class="col">
+          <div class="form-group">
+            <label class="form-label">Registro CREA</label>
+            <input class="form-input" id="p-registro" placeholder="ex: CREA-MT 123.456-D">
+          </div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Especialidades (separadas por vírgula)</label>
+        <input class="form-input" id="p-especialidades" placeholder="ex: Desapropriação, Avaliação rural, Georreferenciamento">
+      </div>
+      <div class="row">
+        <div class="col">
+          <div class="form-group">
+            <label class="form-label">Municípios de atuação</label>
+            <input class="form-input" id="p-municipios" placeholder="ex: Sinop, Sorriso, Alta Floresta">
+          </div>
+        </div>
+        <div class="col">
+          <div class="form-group">
+            <label class="form-label">Região IMEA</label>
+            <select class="form-select" id="p-regiao">
+              <option value="">Selecione a região</option>
+              <option>Médio-Norte</option><option>Norte</option>
+              <option>Centro-Sul</option><option>Oeste</option>
+              <option>Leste</option><option>Sudoeste</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModalPerito()">Cancelar</button>
+      <button class="btn btn-primary" onclick="salvarPerito()">Cadastrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// ESTADO DA APLICAÇÃO
+// ═══════════════════════════════════════════════════════════
+const STATE = {
+  currentScreen: 'dashboard',
+  processos: { offset: 0, limit: 20, total: 0 },
+  scoreHistory: [],
+  mapLayers: {},
+  leafletMap: null,
+  regiaoGlobal: localStorage.getItem('radar_regiao') || '',
+  token: localStorage.getItem('radar_token') || '',
+};
+
+document.addEventListener('DOMContentLoaded', () => {
+    if(!STATE.token) {
+        document.getElementById('login-screen').classList.remove('hidden');
+    } else {
+        showApp();
+    }
+});
+
+function showApp() {
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('app-container').style.display = 'block';
+    if(STATE.regiaoGlobal) {
+        let el = document.getElementById('global-regiao');
+        if(el) el.value = STATE.regiaoGlobal;
+        document.getElementById('status-txt').innerHTML = `Foco: ${STATE.regiaoGlobal}`;
+    }
+    nav('dashboard');
+}
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const u = document.getElementById('login-user').value;
+  const p = document.getElementById('login-pass').value;
+  const btn = document.getElementById('login-btn-el');
+  btn.textContent = 'Autenticando...'; btn.disabled = true;
+  
+  const token = await apiPost('/api/login', {username:u, password:p});
+  btn.textContent = 'Entrar'; btn.disabled = false;
+  
+  if(token && token.status === 'ok') {
+      STATE.token = token.token;
+      localStorage.setItem('radar_token', token.token);
+      showApp();
+  } else {
+      showToast('Credenciais inválidas ou erro no servidor.');
+  }
+}
+
+function doLogout() {
+  STATE.token = '';
+  localStorage.removeItem('radar_token');
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('app-container').style.display = 'none';
+  document.getElementById('login-pass').value = '';
+}
+
+function changeGlobalRegion(regiao) {
+  STATE.regiaoGlobal = regiao;
+  localStorage.setItem('radar_regiao', regiao);
+  document.getElementById('status-txt').innerHTML = regiao ? `Foco: ${regiao}` : 'Sistema ativo · MT';
+  
+  if (STATE.currentScreen === 'mapa') {
+    reloadMapLayers();
+  } else {
+    loadScreen(STATE.currentScreen);
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// UTILITÁRIOS
+// ═══════════════════════════════════════════════════════════
+const fmt = (v, d=0) => {
+  if (v == null || v === '') return '—';
+  const n = parseFloat(v);
+  return isNaN(n) ? String(v) : n.toLocaleString('pt-BR', {minimumFractionDigits:d, maximumFractionDigits:d});
+};
+
+const scoreColor = s => {
+  const n = parseInt(s) || 0;
+  if (n >= 75) return 'var(--alert)';
+  if (n >= 50) return 'var(--clay)';
+  if (n >= 25) return '#7a6128';
+  return 'var(--ink4)';
+};
+
+const faixaLabel = f => ({
+  janela_quente:'Janela Quente', provavel:'Provável Perícia',
+  observacao:'Observação', frio:'Frio'
+}[f] || (f || '—'));
+
+const scoreClass = s => {
+  const n = parseInt(s) || 0;
+  if (n >= 75) return 'sc-critical';
+  if (n >= 50) return 'sc-high';
+  if (n >= 25) return 'sc-medium';
+  return 'sc-low';
+};
+
+const cardClass = s => {
+  const n = parseInt(s) || 0;
+  if (n >= 75) return 'critical';
+  if (n >= 50) return 'high';
+  return 'medium';
+};
+
+const indClass = s => {
+  const n = parseInt(s) || 0;
+  if (n >= 75) return 'ind-critical';
+  if (n >= 50) return 'ind-high';
+  if (n >= 25) return 'ind-medium';
+  return 'ind-neu';
+};
+
+function debounce(fn, delay) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), delay); };
+}
+
+function showToast(msg, duration=3000) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), duration);
+}
+
+// ═══════════════════════════════════════════════════════════
+// NAVEGAÇÃO
+// ═══════════════════════════════════════════════════════════
+function nav(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.topbar-nav a').forEach(a => a.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+
+  document.getElementById('screen-' + id)?.classList.add('active');
+  const SCREENS = ['dashboard','mapa','processos','administrativo','score','peritos','alertas'];
+  const idx = SCREENS.indexOf(id);
+  if (idx >= 0) document.querySelectorAll('.topbar-nav a')[idx]?.classList.add('active');
+
+  // Sidebar active
+  document.querySelectorAll('.nav-item').forEach(n => {
+    if (n.getAttribute('onclick')?.includes("'"+id+"'")) n.classList.add('active');
+  });
+
+  STATE.currentScreen = id;
+  window.scrollTo(0, 0);
+
+  // Inicializa mapa se necessário
+  if (id === 'mapa' && !STATE.leafletMap) initMap();
+  if (id === 'mapa') reloadMapLayers();
+
+  // Carrega dados da tela
+  loadScreen(id);
+}
+
+function loadScreen(id) {
+  switch(id) {
+    case 'dashboard':      loadDashboard(); break;
+    case 'processos':      loadProcessos(); break;
+    case 'administrativo': loadAdministrativo(); break;
+    case 'alertas':        loadAlertas(); break;
+    case 'peritos':        loadPeritos(); break;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// API HELPERS
+// ═══════════════════════════════════════════════════════════
+function _authHeaders(extra = {}) {
+  const token = STATE.token || localStorage.getItem('radar_token') || '';
+  return token
+    ? { 'Authorization': 'Bearer ' + token, ...extra }
+    : { ...extra };
+}
+
+async function apiGet(path) {
+  try {
+    const r = await fetch(path, { headers: _authHeaders() });
+    if (r.status === 401) { doLogout(); return null; }
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch(e) {
+    console.warn('API GET', path, e.message);
+    return null;
+  }
+}
+
+async function apiPost(path, body) {
+  // Login não precisa de token — os demais sim
+  const isLogin = path === '/api/login';
+  try {
+    const r = await fetch(path, {
+      method: 'POST',
+      headers: isLogin
+        ? {'Content-Type':'application/json'}
+        : _authHeaders({'Content-Type':'application/json'}),
+      body: JSON.stringify(body)
+    });
+    if (!isLogin && r.status === 401) { doLogout(); return null; }
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch(e) {
+    console.warn('API POST', path, e.message);
+    return null;
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════
+async function loadDashboard() {
+  let dashQs = '?faixa=janela_quente&limit=3';
+  if (STATE.regiaoGlobal) dashQs += '&regiao=' + encodeURIComponent(STATE.regiaoGlobal);
+  const [stats, dist, regioes, processos] = await Promise.all([
+    apiGet('/api/stats' + (STATE.regiaoGlobal ? '?regiao='+encodeURIComponent(STATE.regiaoGlobal) : '')),
+    apiGet('/api/score/distribuicao'),
+    apiGet('/api/score/regioes'),
+    apiGet('/api/processos' + dashQs),
+  ]);
+
+  // Métricas
+  if (stats) {
+    document.getElementById('m-total').textContent = fmt(stats.total_processos);
+    document.getElementById('m-quentes').textContent = fmt(stats.processos_quentes);
+    document.getElementById('m-provaveis').textContent = fmt(stats.processos_provaveis);
+    document.getElementById('m-parcelas').textContent = fmt(stats.total_parcelas);
+    document.getElementById('m-portarias').textContent = fmt(stats.total_portarias);
+    document.getElementById('m-alertas').textContent = fmt(stats.processos_quentes);
+    document.getElementById('dash-subtitle').textContent =
+      'Mato Grosso · ' + (stats.ultima_coleta ? 'Atualizado ' + stats.ultima_coleta.slice(0,16).replace('T',' ') : 'Aguardando coleta');
+    document.getElementById('sidebar-footer').innerHTML =
+      'Mato Grosso · v2.0<br>' + (stats.ultima_coleta ? stats.ultima_coleta.slice(0,10) : 'Aguardando');
+    document.getElementById('status-txt').textContent =
+      'Sistema ativo · MT · ' + fmt(stats.total_processos) + ' processos';
+  }
+
+  // Distribuição
+  if (dist) {
+    const total = (dist.janela_quente||0)+(dist.provavel||0)+(dist.observacao||0)+(dist.frio||0);
+    const max = total || 1;
+    document.getElementById('dist-container').innerHTML = `
+      <div class="breakdown-row">
+        <div class="breakdown-label">Janela Quente &nbsp; 75–100</div>
+        <div class="breakdown-bar-row">
+          <div class="breakdown-track"><div class="breakdown-fill" style="width:${Math.round((dist.janela_quente||0)/max*100)}%;background:var(--alert)"></div></div>
+          <div class="breakdown-val" style="color:var(--alert)">${dist.janela_quente||0}</div>
+        </div>
+      </div>
+      <div class="breakdown-row">
+        <div class="breakdown-label">Provável Perícia &nbsp; 50–74</div>
+        <div class="breakdown-bar-row">
+          <div class="breakdown-track"><div class="breakdown-fill" style="width:${Math.round((dist.provavel||0)/max*100)}%;background:var(--clay)"></div></div>
+          <div class="breakdown-val" style="color:var(--clay)">${dist.provavel||0}</div>
+        </div>
+      </div>
+      <div class="breakdown-row">
+        <div class="breakdown-label">Observação &nbsp; 25–49</div>
+        <div class="breakdown-bar-row">
+          <div class="breakdown-track"><div class="breakdown-fill" style="width:${Math.round((dist.observacao||0)/max*100)}%;background:var(--sand)"></div></div>
+          <div class="breakdown-val" style="color:#7a6128">${dist.observacao||0}</div>
+        </div>
+      </div>
+      <div class="breakdown-row">
+        <div class="breakdown-label">Frio &nbsp; 0–24</div>
+        <div class="breakdown-bar-row">
+          <div class="breakdown-track"><div class="breakdown-fill" style="width:${Math.round((dist.frio||0)/max*100)}%;background:var(--rule-dark)"></div></div>
+          <div class="breakdown-val" style="color:var(--ink4)">${dist.frio||0}</div>
+        </div>
+      </div>`;
+  }
+
+  // Regiões
+  if (regioes?.length) {
+    const maxR = regioes[0]?.total || 1;
+    document.getElementById('regioes-container').innerHTML = regioes.slice(0,6).map(r => `
+      <div class="breakdown-row">
+        <div class="breakdown-label">${r.regiao_imea||'—'}</div>
+        <div class="breakdown-bar-row">
+          <div class="breakdown-track"><div class="breakdown-fill" style="width:${Math.round((r.total||0)/maxR*100)}%;background:var(--field)"></div></div>
+          <div class="breakdown-val" style="color:var(--field)">${r.total||0}</div>
+        </div>
+      </div>`).join('');
+  } else {
+    document.getElementById('regioes-container').innerHTML = '<div class="empty-state"><p>Sem dados de regiões</p></div>';
+  }
+
+  // Top processos
+  if (processos?.items?.length) {
+    document.getElementById('dash-processos').innerHTML = processos.items.map(p => `
+      <div class="process-card ${cardClass(p.score_total)}">
+        <div class="process-header">
+          <div>
+            <div class="process-title">${p.classe_processual||'—'} — ${p.comarca||p.municipio||'—'}</div>
+            <div class="process-meta">N.º ${p.numero_cnj||'—'} &nbsp;·&nbsp; ${p.tribunal||''} &nbsp;·&nbsp; ${p.data_distribuicao||''}</div>
+          </div>
+          <div style="text-align:right;flex-shrink:0;margin-left:14px">
+            <div class="score-big" style="color:${scoreColor(p.score_total)}">${p.score_total||0}</div>
+            <span class="score-tag ${scoreClass(p.score_total)}" style="margin-top:5px">${faixaLabel(p.faixa_probabilidade)}</span>
+          </div>
+        </div>
+        <div class="process-excerpt">${p.assunto_principal||''} &nbsp;·&nbsp; ${p.regiao_imea||''} &nbsp;·&nbsp; Urgência: ${p.urgencia||'—'}</div>
+        <div class="process-actions">
+          <button class="btn btn-primary" onclick="nav('processos')">Ver todos os processos</button>
+          <button class="btn btn-secondary" onclick="nav('mapa')">Ver no mapa</button>
+        </div>
+      </div>`).join('');
+  } else {
+    document.getElementById('dash-processos').innerHTML = `
+      <div class="empty-state">
+        <p>Nenhum processo com janela quente encontrado.</p>
+        <p style="margin-top:8px">Execute a coleta real: <code>docker compose exec web python run_collect.py --source judicial admin --dias 30</code></p>
+      </div>`;
+  }
+}
+
+function refreshDashboard() {
+  document.getElementById('dash-processos').innerHTML = '<div class="loading">Atualizando...</div>';
+  loadDashboard();
+  showToast('Dados atualizados');
+}
+
+// ═══════════════════════════════════════════════════════════
+// MAPA TERRITORIAL
+// ═══════════════════════════════════════════════════════════
+function initMap() {
+  const m = L.map('map', {center:[-12.5,-55.5], zoom:6, zoomControl:true});
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution:'© OpenStreetMap',maxZoom:18
+  }).addTo(m);
+
+  // Tile layer satélite
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',{
+    attribution:'Esri',maxZoom:18
+  });
+
+  L.control.layers({'OpenStreetMap': L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'© OSM',maxZoom:18}).addTo(m), 'Satélite': sat}).addTo(m);
+
+  STATE.leafletMap = m;
+}
+
+function styleParcel(sit) {
+  const s = (sit||'').toLowerCase();
+  if (s.includes('desapropri'))  return {color:'#7a1f1f',fillColor:'#c0392b',weight:1.5,fillOpacity:.5};
+  if (s.includes('processo') || s.includes('interesse')) return {color:'#8b5e3c',fillColor:'#e67e22',weight:1.2,fillOpacity:.45};
+  if (s.includes('vistoriad'))   return {color:'#7d6608',fillColor:'#f1c40f',weight:1,fillOpacity:.4};
+  return {color:'#4a7a4a',fillColor:'#5dade2',weight:.8,fillOpacity:.2};
+}
+
+function popupParcel(props) {
+  return `<div class="map-popup">
+    <div class="map-popup-header">${props.municipio||'—'}</div>
+    <div class="map-popup-body">
+      <div class="map-popup-row"><span class="map-popup-key">Código</span><span class="map-popup-val">${props.codigo_imovel||'—'}</span></div>
+      <div class="map-popup-row"><span class="map-popup-key">Área</span><span class="map-popup-val">${fmt(props.area_ha,1)} ha</span></div>
+      <div class="map-popup-row"><span class="map-popup-key">Situação</span><span class="map-popup-val" style="color:var(--alert)">${props.situacao||'—'}</span></div>
+      <div class="map-popup-row"><span class="map-popup-key">Fonte</span><span class="map-popup-val">${props.fonte||'SIGEF'}</span></div>
+    </div>
+  </div>`;
+}
+
+async function reloadMapLayers() {
+  const m = STATE.leafletMap;
+  if (!m) return;
+
+  const mun = document.getElementById('map-filter-mun')?.value || '';
+  const faixa = document.getElementById('map-filter-faixa')?.value || '';
+
+  // Remove layers existentes
+  Object.values(STATE.mapLayers).forEach(l => { if (m.hasLayer(l)) m.removeLayer(l); });
+  STATE.mapLayers = {};
+
+  let totalImoveis = 0;
+
+  // Municípios
+  if (document.getElementById('layer-municipios')?.checked) {
+    const data = await apiGet('/api/municipios/geojson');
+    if (data?.features?.length) {
+      const layer = L.geoJSON(data, {
+        style: {stroke:false,fill:false},
+        onEachFeature: (f, l) => l.bindTooltip(f.properties?.nome || '', {sticky:true, className:'leaflet-tooltip'})
+      }).addTo(m);
+      STATE.mapLayers['municipios'] = layer;
+    }
+  }
+
+  // Desapropriadas
+  if (document.getElementById('layer-desapropriadas')?.checked) {
+    const qs = new URLSearchParams({apenas_desapropriadas:true, ...(mun?{municipio:mun}:{})});
+    const data = await apiGet('/api/parcelas/geojson?' + qs);
+    if (data?.features?.length) {
+      const layer = L.geoJSON(data, {
+        style: f => styleParcel(f.properties?.situacao),
+        onEachFeature: (f, l) => l.bindPopup(popupParcel(f.properties), {maxWidth:280})
+      }).addTo(m);
+      STATE.mapLayers['desapropriadas'] = layer;
+      totalImoveis += data.features.length;
+    }
+  }
+
+  // Todos os imóveis
+  if (document.getElementById('layer-todos')?.checked) {
+    const qs = new URLSearchParams({...(mun?{municipio:mun}:{})});
+    const data = await apiGet('/api/parcelas/geojson?' + qs);
+    if (data?.features?.length) {
+      const layer = L.geoJSON(data, {
+        style: f => styleParcel(f.properties?.situacao),
+        onEachFeature: (f, l) => l.bindPopup(popupParcel(f.properties), {maxWidth:280})
+      }).addTo(m);
+      STATE.mapLayers['todos'] = layer;
+      totalImoveis += data.features.length;
+    }
+  }
+
+  // Assentamentos
+  if (document.getElementById('layer-assentamentos')?.checked) {
+    const data = await apiGet('/api/assentamentos/geojson');
+    if (data?.features?.length) {
+      const layer = L.geoJSON(data, {
+        style: {color:'#1a5276',fillColor:'#2e86c1',weight:.8,fillOpacity:.35},
+        onEachFeature: (f, l) => l.bindTooltip(
+          (f.properties?.nome_pa||'Assentamento') + ' · ' + fmt(f.properties?.area_ha,1) + ' ha', {sticky:true}
+        )
+      }).addTo(m);
+      STATE.mapLayers['assentamentos'] = layer;
+    }
+  }
+
+  // PRODES
+  if (document.getElementById('layer-prodes')?.checked) {
+    const data = await apiGet('/api/prodes/geojson');
+    if (data?.features?.length) {
+      const layer = L.geoJSON(data, {
+        style: {color:'#922b21',fillColor:'#c0392b',weight:.5,fillOpacity:.25}
+      }).addTo(m);
+      STATE.mapLayers['prodes'] = layer;
+    }
+  }
+
+  const boundsLayers = Object.values(STATE.mapLayers).filter(l => l && l.getBounds && l.getBounds().isValid());
+  if (boundsLayers.length) {
+    if (STATE.regiaoGlobal && STATE.mapLayers['municipios'] && document.getElementById('layer-municipios')?.checked) {
+      let b = L.latLngBounds();
+      let found = false;
+      STATE.mapLayers['municipios'].eachLayer(l => {
+        if (l.feature && l.feature.properties.regiao_imea === STATE.regiaoGlobal) {
+          b.extend(l.getBounds());
+          found = true;
+        }
+      });
+      if (found && b.isValid()) {
+        m.fitBounds(b, {padding: [20, 20], maxZoom: 10});
+      } else {
+        let bFallback = boundsLayers[0].getBounds();
+        for (let i = 1; i < boundsLayers.length; i++) bFallback = bFallback.extend(boundsLayers[i].getBounds());
+        m.fitBounds(bFallback, {padding: [20, 20], maxZoom: 10});
+      }
+    } else {
+      let b = boundsLayers[0].getBounds();
+      for (let i = 1; i < boundsLayers.length; i++) b = b.extend(boundsLayers[i].getBounds());
+      m.fitBounds(b, {padding: [20, 20], maxZoom: 10});
+    }
+  }
+  document.getElementById('map-subtitle').textContent = STATE.regiaoGlobal 
+    ? `Focado na Região ${STATE.regiaoGlobal} · ${fmt(totalImoveis)} áreas carregadas`
+    : `${fmt(totalImoveis)} áreas SIGEF carregadas · Camadas geoespaciais atualizadas`;
+}
+
+function toggleLayer(name) {
+  const m = STATE.leafletMap;
+  if (!m) return;
+  reloadMapLayers();
+}
+
+async function exportGeoJSON() {
+  const data = await apiGet('/api/parcelas/geojson?apenas_desapropriadas=true');
+  if (!data) { showToast('Sem dados para exportar'); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/geo+json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url;
+  a.download = 'parcelas_desapropriadas_mt.geojson'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('GeoJSON exportado');
+}
+
+// ═══════════════════════════════════════════════════════════
+// PROCESSOS
+// ═══════════════════════════════════════════════════════════
+async function loadProcessos() {
+  STATE.processos.offset = 0;
+  await fetchProcessos();
+}
+
+async function fetchProcessos() {
+  const { offset, limit } = STATE.processos;
+  const faixa    = document.getElementById('proc-faixa')?.value || '';
+
+  const regiaoDropdown = document.getElementById('proc-regiao');
+  if (regiaoDropdown && STATE.regiaoGlobal) {
+      regiaoDropdown.value = STATE.regiaoGlobal;
+      regiaoDropdown.disabled = true;
+  } else if (regiaoDropdown) {
+      regiaoDropdown.disabled = false;
+  }
+  const regiao   = STATE.regiaoGlobal || (document.getElementById('proc-regiao')?.value || '');
+
+  const municipio= document.getElementById('proc-municipio')?.value || '';
+  const classe   = document.getElementById('proc-classe')?.value || '';
+
+  const qs = new URLSearchParams({limit, offset,
+    ...(faixa?{faixa}:{}), ...(regiao?{regiao}:{}),
+    ...(municipio?{municipio}:{}), ...(classe?{classe}:{})
+  });
+
+  document.getElementById('proc-table-wrap').innerHTML = '<div class="loading">Carregando...</div>';
+  const data = await apiGet('/api/processos?' + qs);
+
+  if (!data) {
+    document.getElementById('proc-table-wrap').innerHTML =
+      '<div class="empty-state"><p>Erro ao carregar. Verifique a conexão.</p></div>';
+    return;
+  }
+
+  STATE.processos.total = data.total;
+
+  if (!data.items?.length) {
+    document.getElementById('proc-table-wrap').innerHTML = `
+      <div class="empty-state">
+        <p>Nenhum processo encontrado com os filtros aplicados.</p>
+        <p style="margin-top:6px">Execute: <code>docker compose exec web python run_collect.py --source judicial</code></p>
+      </div>`;
+    document.getElementById('proc-pagination').style.display = 'none';
+    document.getElementById('proc-subtitle').textContent = '0 processos encontrados';
+    return;
+  }
+
+  document.getElementById('proc-table-wrap').innerHTML = `
+    <table class="data-table">
+      <thead><tr>
+        <th style="width:100px">Score</th>
+        <th style="width:155px">N.º CNJ</th>
+        <th>Classe / Assunto</th>
+        <th>Município</th>
+        <th style="width:100px">Região IMEA</th>
+        <th>Tipo de Perícia</th>
+        <th style="width:80px">Urgência</th>
+        <th style="width:50px"></th>
+      </tr></thead>
+      <tbody>${data.items.map(p => `
+        <tr>
+          <td>
+            <div class="score-bar-row">
+              <div class="score-track"><div class="score-fill" style="width:${p.score_total||0}%;background:${scoreColor(p.score_total)}"></div></div>
+              <div class="score-num" style="color:${scoreColor(p.score_total)}">${p.score_total||0}</div>
+            </div>
+          </td>
+          <td class="td-mono" style="font-size:10px;line-height:1.4">${(p.numero_cnj||'—').replace(/(\d{7}-\d{2}\.\d{4}\.\d\.\d{2}\.\d{4})/,'$1')}</td>
+          <td>
+            <div class="td-primary">${p.classe_processual||'—'}</div>
+            <div style="font-family:var(--fm);font-size:10px;color:var(--ink4);margin-top:2px">${p.assunto_principal||''}</div>
+          </td>
+          <td>${p.municipio||'—'}</td>
+          <td><span class="region-tag">${p.regiao_imea||'—'}</span></td>
+          <td><span class="score-tag ${scoreClass(p.score_total)}">${p.tipo_pericia_sugerida||'—'}</span></td>
+          <td style="font-family:var(--fm);font-size:10px;color:${scoreColor(p.score_total)}">${p.urgencia||'—'}</td>
+          <td><button class="btn btn-ghost" onclick="verProcessoDetalhe(${JSON.stringify(p).replace(/"/g,'&quot;')})">Ver</button></td>
+        </tr>`).join('')}
+      </tbody>
+    </table>`;
+
+  document.getElementById('proc-subtitle').textContent =
+    `${fmt(data.total)} processos · Ordenado por score decrescente`;
+  document.getElementById('proc-pagination').style.display = 'flex';
+  document.getElementById('proc-info').textContent =
+    `Exibindo ${offset+1}–${Math.min(offset+data.items.length, data.total)} de ${fmt(data.total)}`;
+  document.getElementById('btn-prev').disabled = offset === 0;
+  document.getElementById('btn-next').disabled = offset + limit >= data.total;
+}
+
+function procPage(dir) {
+  const { offset, limit, total } = STATE.processos;
+  const next = offset + dir * limit;
+  if (next < 0 || next >= total) return;
+  STATE.processos.offset = next;
+  fetchProcessos();
+}
+
+function verProcessoDetalhe(p) {
+  // Abre modal simples com detalhes
+  const html = `
+    <div style="font-family:var(--fm);font-size:10px;color:var(--ink4);margin-bottom:12px">
+      N.º CNJ: ${p.numero_cnj||'—'}
+    </div>
+    <div class="row mb-16">
+      <div class="col">
+        <div style="font-family:var(--fm);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink4);margin-bottom:4px">Classe</div>
+        <div style="font-size:13px;font-weight:500">${p.classe_processual||'—'}</div>
+      </div>
+      <div class="col">
+        <div style="font-family:var(--fm);font-size:9px;text-transform:uppercase;letter-spacing:.1em;color:var(--ink4);margin-bottom:4px">Score</div>
+        <div style="font-family:var(--fd);font-size:28px;font-weight:600;color:${scoreColor(p.score_total)}">${p.score_total||0}</div>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px">
+      <div><span style="color:var(--ink4);font-family:var(--fm);font-size:9px;display:block;margin-bottom:2px;text-transform:uppercase">Município</span>${p.municipio||'—'}</div>
+      <div><span style="color:var(--ink4);font-family:var(--fm);font-size:9px;display:block;margin-bottom:2px;text-transform:uppercase">Região IMEA</span>${p.regiao_imea||'—'}</div>
+      <div><span style="color:var(--ink4);font-family:var(--fm);font-size:9px;display:block;margin-bottom:2px;text-transform:uppercase">Tribunal</span>${p.tribunal||'—'}</div>
+      <div><span style="color:var(--ink4);font-family:var(--fm);font-size:9px;display:block;margin-bottom:2px;text-transform:uppercase">Vara</span>${p.vara||p.comarca||'—'}</div>
+      <div><span style="color:var(--ink4);font-family:var(--fm);font-size:9px;display:block;margin-bottom:2px;text-transform:uppercase">Assunto</span>${p.assunto_principal||'—'}</div>
+      <div><span style="color:var(--ink4);font-family:var(--fm);font-size:9px;display:block;margin-bottom:2px;text-transform:uppercase">Fase atual</span>${p.fase_atual||'—'}</div>
+      <div><span style="color:var(--ink4);font-family:var(--fm);font-size:9px;display:block;margin-bottom:2px;text-transform:uppercase">Tipo de perícia</span>${p.tipo_pericia_sugerida||'—'}</div>
+      <div><span style="color:var(--ink4);font-family:var(--fm);font-size:9px;display:block;margin-bottom:2px;text-transform:uppercase">Urgência</span><span style="color:${scoreColor(p.score_total)}">${p.urgencia||'—'}</span></div>
+    </div>`;
+
+  openGenericModal('Detalhe do Processo', html, null);
+}
+
+// Modal genérico
+function openGenericModal(title, bodyHTML, onConfirm) {
+  const m = document.getElementById('modal-perito');
+  m.querySelector('.modal-title').textContent = title;
+  m.querySelector('.modal-body').innerHTML = bodyHTML;
+  const footer = m.querySelector('.modal-footer');
+  if (onConfirm) {
+    footer.innerHTML = `<button class="btn btn-secondary" onclick="closeModalPerito()">Fechar</button>
+      <button class="btn btn-primary" onclick="(${onConfirm.toString()})()">Confirmar</button>`;
+  } else {
+    footer.innerHTML = `<button class="btn btn-secondary" onclick="closeModalPerito()">Fechar</button>`;
+  }
+  m.classList.add('open');
+}
+
+async function exportCSV(tipo) {
+  let data, filename;
+  if (tipo === 'processos') {
+    const { limit } = STATE.processos;
+    const faixa = document.getElementById('proc-faixa')?.value || '';
+    data = await apiGet('/api/processos?limit=1000' + (faixa?'&faixa='+faixa:''));
+    filename = 'processos_radar_pericial.csv';
+    if (!data?.items?.length) { showToast('Sem dados para exportar'); return; }
+    const cols = ['numero_cnj','tribunal','comarca','municipio','regiao_imea','classe_processual','assunto_principal','score_total','faixa_probabilidade','tipo_pericia_sugerida','urgencia'];
+    const csv = [cols.join(';'), ...data.items.map(r => cols.map(c => JSON.stringify(r[c]||'')).join(';'))].join('\n');
+    const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href=url; a.download=filename; a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV exportado: ' + filename);
+  }
+}
+
+async function exportGeoJSONProcessos() {
+  showToast('Exportando GeoJSON...');
+  const data = await apiGet('/api/parcelas/geojson?apenas_desapropriadas=true');
+  if (!data) { showToast('Sem dados geoespaciais'); return; }
+  const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/geo+json'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href=url; a.download='desapropriadas_mt.geojson'; a.click();
+  URL.revokeObjectURL(url);
+  showToast('GeoJSON exportado');
+}
+
+// ═══════════════════════════════════════════════════════════
+// ADMINISTRATIVO
+// ═══════════════════════════════════════════════════════════
+async function loadAdministrativo() {
+  const municipio = document.getElementById('adm-municipio')?.value || '';
+  const faixa     = document.getElementById('adm-faixa')?.value || '';
+  const dias      = document.getElementById('adm-dias')?.value || '30';
+
+  const fontes = [];
+  if (document.getElementById('adm-dou')?.checked)   fontes.push('dou');
+  if (document.getElementById('adm-iomat')?.checked) fontes.push('iomat');
+  if (document.getElementById('adm-dnit')?.checked)  fontes.push('dnit');
+  if (document.getElementById('adm-sinfra')?.checked) fontes.push('sinfra');
+
+  const qs = new URLSearchParams({limit:50, dias,
+    ...(municipio?{municipio}:{}), ...(faixa?{faixa}:{})
+  });
+  if (fontes.length) qs.set('fontes', fontes.join(','));
+
+  document.getElementById('adm-list').innerHTML = '<div class="loading">Carregando eventos...</div>';
+  const data = await apiGet('/api/eventos?' + qs);
+
+  if (!data?.items?.length) {
+    document.getElementById('adm-list').innerHTML = `
+      <div class="empty-state">
+        <p>Nenhum evento encontrado.</p>
+        <p style="margin-top:6px">Execute: <code>docker compose exec web python run_collect.py --source admin</code></p>
+      </div>`;
+    document.getElementById('adm-subtitle').textContent = '0 eventos encontrados';
+    return;
+  }
+
+  document.getElementById('adm-subtitle').textContent =
+    `${data.total} eventos administrativos encontrados`;
+
+  document.getElementById('adm-list').innerHTML = data.items.map(ev => {
+    const sc = parseInt(ev.score_evento)||0;
+    const tagCls = sc>=75?'sc-critical':sc>=50?'sc-high':'sc-medium';
+    const cardCls = sc>=75?'critical':sc>=50?'high':'medium';
+    return `
+    <div class="process-card ${cardCls}">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:14px">
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:7px;flex-wrap:wrap">
+            <span class="region-tag">${ev.fonte||'—'}</span>
+            ${ev.orgao ? `<span class="specialty-tag">${ev.orgao}</span>` : ''}
+            <span style="font-family:var(--fm);font-size:9px;color:var(--ink4)">${ev.data_publicacao||''}</span>
+          </div>
+          <div class="process-title">${ev.titulo||'—'}</div>
+          <div class="process-meta">${ev.municipio||''} ${ev.area_ha ? '· ' + fmt(ev.area_ha,1) + ' ha' : ''}</div>
+          <div class="process-excerpt">${(ev.resumo||'').slice(0,220)}${(ev.resumo||'').length>220?'...':''}</div>
+          <div class="process-actions">
+            ${ev.url ? `<a href="${ev.url}" target="_blank" rel="noopener" class="btn btn-primary" style="text-decoration:none">Ver publicação original</a>` : ''}
+            <button class="btn btn-ghost" onclick="calcularScoreTexto(${JSON.stringify(ev.titulo||'').replace(/"/g,'&quot;')}, ${JSON.stringify(ev.resumo||'').replace(/"/g,'&quot;')})">Calcular score completo</button>
+          </div>
+        </div>
+        <div style="text-align:right;flex-shrink:0">
+          <div class="score-big" style="color:${scoreColor(sc)}">${sc}</div>
+          <span class="score-tag ${tagCls}" style="display:inline-block;margin-top:5px">${faixaLabel(ev.faixa_probabilidade)}</span>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// CALCULADORA DE SCORE
+// ═══════════════════════════════════════════════════════════
+async function calcularScore() {
+  const body = {
+    classe_processual: document.getElementById('calc-classe')?.value || '',
+    assunto:           document.getElementById('calc-assunto')?.value || '',
+    movimentacoes:     (document.getElementById('calc-movs')?.value || '').split('\n').filter(Boolean),
+    texto_livre:       document.getElementById('calc-texto')?.value || '',
+  };
+
+  if (!body.classe_processual && !body.texto_livre) {
+    showToast('Preencha ao menos a classe processual ou o texto livre');
+    return;
+  }
+
+  const btn = document.querySelector('#screen-score .btn-primary');
+  if (btn) { btn.textContent = 'Calculando...'; btn.disabled = true; }
+
+  const data = await apiPost('/api/score/calcular', body);
+
+  if (btn) { btn.textContent = 'Calcular Score'; btn.disabled = false; }
+
+  if (!data) { showToast('Erro ao calcular score'); return; }
+
+  renderScoreResult(data);
+  addScoreHistory(body, data);
+}
+
+function calcularScoreTexto(titulo, texto) {
+  document.getElementById('calc-titulo-hint').value = titulo;
+  document.getElementById('calc-texto').value = texto;
+  nav('score');
+  setTimeout(calcularScore, 200);
+}
+
+function renderScoreResult(data) {
+  const sc = parseInt(data.score_total)||0;
+  const cor = scoreColor(sc);
+
+  document.getElementById('score-num').textContent = sc;
+  document.getElementById('score-num').style.color = cor;
+  document.getElementById('score-faixa').textContent = `${faixaLabel(data.faixa_probabilidade)} · ${sc>=75?'75–100':sc>=50?'50–74':sc>=25?'25–49':'0–24'}`;
+  document.getElementById('score-tipo').textContent = data.tipo_pericia_sugerida ? 'Tipo provável: ' + data.tipo_pericia_sugerida : '';
+
+  const components = [
+    ['bf-classe','bv-classe', data.score_classe, 30],
+    ['bf-assunto','bv-assunto', data.score_assunto, 25],
+    ['bf-movs','bv-movs', data.score_movimentacao, 30],
+    ['bf-pub','bv-pub', data.score_publicacao, 25],
+    ['bf-adm','bv-adm', data.score_administrativo, 20],
+  ];
+  components.forEach(([fId, vId, val, max]) => {
+    const n = parseInt(val)||0;
+    const pct = Math.min(Math.round(n/max*100),100);
+    const c = scoreColor(n*3);
+    const fill = document.getElementById(fId);
+    const valEl = document.getElementById(vId);
+    if (fill) { fill.style.width = pct+'%'; fill.style.background = c; }
+    if (valEl) { valEl.textContent = n; valEl.style.color = c; }
+  });
+
+  const cats = (data.categorias_detectadas||'').split(',').filter(Boolean);
+  document.getElementById('score-cats').innerHTML = cats.length
+    ? cats.map(c => `<span class="specialty-tag">${c.trim()}</span>`).join('')
+    : '<span style="font-family:var(--fm);font-size:10px;color:var(--ink4)">Nenhuma categoria detectada</span>';
+}
+
+function addScoreHistory(body, data) {
+  const sc = parseInt(data.score_total)||0;
+  STATE.scoreHistory.unshift({body, data, ts: new Date().toLocaleTimeString('pt-BR')});
+  if (STATE.scoreHistory.length > 10) STATE.scoreHistory.pop();
+
+  document.getElementById('score-history').innerHTML = STATE.scoreHistory.map((h,i) => `
+    <div style="background:var(--white);border:1px solid var(--rule);border-left:2px solid ${scoreColor(h.data.score_total)};border-radius:2px;padding:9px 11px;cursor:pointer" onclick="renderScoreResult(${JSON.stringify(h.data).replace(/"/g,'&quot;')})">
+      <div style="font-family:var(--fm);font-size:9px;color:var(--ink4)">${h.body.classe_processual||'Texto livre'} · ${h.ts}</div>
+      <div style="font-family:var(--fd);font-size:20px;font-weight:600;color:${scoreColor(h.data.score_total)}">${h.data.score_total||0}</div>
+    </div>`).join('');
+}
+
+function limparCalc() {
+  ['calc-classe','calc-assunto','calc-movs','calc-texto'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = '';
+  });
+  document.getElementById('score-num').textContent = '—';
+  document.getElementById('score-num').style.color = 'var(--ink4)';
+  document.getElementById('score-faixa').textContent = 'Aguardando cálculo';
+  document.getElementById('score-tipo').textContent = '';
+  ['bf-classe','bf-assunto','bf-movs','bf-pub','bf-adm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.style.width = '0%'; el.style.background = 'var(--ink4)'; }
+  });
+  ['bv-classe','bv-assunto','bv-movs','bv-pub','bv-adm'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) { el.textContent = '—'; el.style.color = 'var(--ink4)'; }
+  });
+  document.getElementById('score-cats').innerHTML = '';
+}
+
+// ═══════════════════════════════════════════════════════════
+// PERITOS
+// ═══════════════════════════════════════════════════════════
+async function loadPeritos() {
+  const busca  = document.getElementById('per-busca')?.value || '';
+  const regiao = document.getElementById('per-regiao')?.value || '';
+  const qs = new URLSearchParams({...(busca?{busca}:{}), ...(regiao?{regiao}:{})});
+
+  document.getElementById('peritos-grid').innerHTML = '<div class="loading" style="grid-column:1/-1">Carregando...</div>';
+  const data = await apiGet('/api/peritos?' + qs);
+
+  if (!data?.items?.length) {
+    document.getElementById('peritos-grid').innerHTML = `
+      <div class="empty-state" style="grid-column:1/-1">
+        <p>Nenhum profissional cadastrado ainda.</p>
+      </div>
+      ${addCellBtn()}`;
+    document.getElementById('peritos-subtitle').textContent = '0 profissionais cadastrados';
+    return;
+  }
+
+  document.getElementById('peritos-subtitle').textContent =
+    `${data.total} profissionais cadastrados · Mato Grosso`;
+
+  const scoreC = s => parseInt(s)>=90?'var(--field)':parseInt(s)>=70?'var(--clay)':'#7a6128';
+
+  document.getElementById('peritos-grid').innerHTML = data.items.map(p => {
+    const iniciais = (p.nome||'?').split(' ').slice(0,2).map(w=>w[0]).join('').toUpperCase();
+    return `
+    <div class="perito-cell">
+      <div class="perito-monogram">${iniciais}</div>
+      <div class="perito-name">${p.nome||'—'}</div>
+      <div class="perito-credentials">${p.registro_profissional||''} · Engenheiro Agrônomo</div>
+      <div style="margin-top:10px">
+        ${(p.especialidades||'').split(',').filter(Boolean).map(e=>`<span class="specialty-tag">${e.trim()}</span>`).join('')}
+      </div>
+      <div style="font-family:var(--fm);font-size:10px;color:var(--ink4);margin-top:9px">Região: ${p.regiao_imea||'—'}</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-top:11px">
+        <div>
+          <div style="font-family:var(--fm);font-size:9px;color:var(--ink4);letter-spacing:.08em;text-transform:uppercase">Score profissional</div>
+          <div class="score-profissional" style="color:${scoreC(p.score_profissional)}">${p.score_profissional||0}</div>
+        </div>
+        <button class="btn btn-ghost" onclick="editarPerito(${p.id}, ${JSON.stringify(p.nome||'').replace(/"/g,'&quot;')})">Editar</button>
+      </div>
+    </div>`}).join('') + addCellBtn();
+}
+
+function addCellBtn() {
+  return `<div class="perito-cell" style="border:1px dashed var(--rule-dark);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;background:var(--paper)" onclick="openModalPerito()">
+    <div style="width:36px;height:36px;border:1px dashed var(--rule-dark);border-radius:2px;display:flex;align-items:center;justify-content:center;color:var(--ink4);font-size:20px;font-weight:300">+</div>
+    <div style="font-family:var(--fm);font-size:10px;color:var(--ink4);letter-spacing:.08em;text-align:center">Cadastrar<br>novo profissional</div>
+  </div>`;
+}
+
+function openModalPerito() {
+  ['p-nome','p-registro','p-especialidades','p-municipios'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.value = '';
+  });
+  const sel = document.getElementById('p-regiao'); if (sel) sel.value = '';
+  document.getElementById('modal-perito').querySelector('.modal-title').textContent = 'Cadastrar Profissional';
+  document.getElementById('modal-perito').querySelector('.modal-body').innerHTML =
+    document.getElementById('modal-perito').querySelector('.modal-body').innerHTML;
+  document.getElementById('modal-perito').classList.add('open');
+}
+
+function closeModalPerito() {
+  document.getElementById('modal-perito').classList.remove('open');
+}
+
+function editarPerito(id, nome) {
+  showToast('Edição de ' + nome + ' em desenvolvimento');
+}
+
+async function salvarPerito() {
+  const body = {
+    nome:                  document.getElementById('p-nome')?.value?.trim() || '',
+    registro_profissional: document.getElementById('p-registro')?.value?.trim() || '',
+    especialidades:        document.getElementById('p-especialidades')?.value?.trim() || '',
+    municipios_atuacao:    document.getElementById('p-municipios')?.value?.trim() || '',
+    regiao_imea:           document.getElementById('p-regiao')?.value || '',
+  };
+
+  if (!body.nome) { showToast('Informe o nome do profissional'); return; }
+
+  const data = await apiPost('/api/peritos', body);
+  if (data?.id) {
+    showToast('Profissional cadastrado com sucesso');
+    closeModalPerito();
+    loadPeritos();
+  } else {
+    showToast('Erro ao cadastrar profissional');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// ALERTAS
+// ═══════════════════════════════════════════════════════════
+async function loadAlertas() {
+  document.getElementById('alertas-timeline').innerHTML = '<div class="loading">Carregando...</div>';
+  const [alertas, stats] = await Promise.all([
+    apiGet('/api/alertas?limit=40'),
+    apiGet('/api/stats'),
+  ]);
+
+  if (stats) {
+    document.getElementById('alertas-subtitle').textContent =
+      `${stats.processos_quentes||0} janelas quentes · ${stats.processos_provaveis||0} prováveis perícias`;
+    document.getElementById('alert-stats').innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--rule)">
+          <span style="font-size:11px;color:var(--ink3)">Janelas quentes</span>
+          <span style="font-family:var(--fd);font-size:18px;font-weight:600;color:var(--alert)">${stats.processos_quentes||0}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--rule)">
+          <span style="font-size:11px;color:var(--ink3)">Prováveis perícias</span>
+          <span style="font-family:var(--fd);font-size:18px;font-weight:600">${stats.processos_provaveis||0}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--rule)">
+          <span style="font-size:11px;color:var(--ink3)">Total processos</span>
+          <span style="font-family:var(--fd);font-size:18px;font-weight:600">${fmt(stats.total_processos)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:7px 0">
+          <span style="font-size:11px;color:var(--ink3)">Portarias D.O.</span>
+          <span style="font-family:var(--fd);font-size:18px;font-weight:600">${fmt(stats.total_portarias)}</span>
+        </div>
+      </div>`;
+  }
+
+  if (!alertas?.items?.length) {
+    document.getElementById('alertas-timeline').innerHTML = `
+      <div class="empty-state">
+        <p>Nenhum alerta registrado.</p>
+        <p style="margin-top:6px">Execute a coleta para gerar alertas.</p>
+      </div>`;
+    return;
+  }
+
+  document.getElementById('alertas-timeline').innerHTML = alertas.items.map(a => {
+    const sc = parseInt(a.score_evento)||0;
+    const hora = (a.coletado_em||'').slice(11,16) || '—';
+    const data_pub = a.data_publicacao || '';
+    return `
+    <div class="timeline-item">
+      <div class="timeline-indicator ${indClass(sc)}" style="min-height:40px"></div>
+      <div class="timeline-time">${hora || data_pub.slice(0,10)}</div>
+      <div class="timeline-content">
+        <div class="timeline-title">${faixaLabel(a.faixa_probabilidade)} — ${a.orgao||a.fonte||'—'}</div>
+        <div class="timeline-sub">${a.titulo||'—'} · Score ${sc}${a.municipio?' · '+a.municipio:''}${a.area_ha?' · '+fmt(a.area_ha,1)+' ha':''}</div>
+        ${a.url ? `<div style="margin-top:5px"><a href="${a.url}" target="_blank" rel="noopener" class="btn btn-ghost" style="text-decoration:none">Ver publicação original</a></div>` : ''}
+      </div>
+    </div>`}).join('');
+}
+
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+document.addEventListener('DOMContentLoaded', () => {
+  // Adiciona hidden input para hint do score
+  const si = document.createElement('input');
+  si.type='hidden'; si.id='calc-titulo-hint';
+  document.body.appendChild(si);
+
+  loadDashboard();
+});
+</script>
+</body>
+</html>

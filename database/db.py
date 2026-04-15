@@ -13,23 +13,26 @@ Fixes aplicados:
 """
 
 import logging
+# ── CONEXÃO COM BANCO (Railway-compatible) ─────────────────────────────
 import os
-from typing import Optional
 
-import geopandas as gpd
-import pandas as pd
-from passlib.context import CryptContext
-from sqlalchemy import create_engine, text
+# Tenta DATABASE_URL primeiro, senão monta com variáveis individuais
+_raw_db_url = os.getenv("DATABASE_URL")
 
-logger = logging.getLogger(__name__)
+if not _raw_db_url:
+    # Monta URL com variáveis PG* do Railway
+    user = os.getenv("PGUSER", "postgres")
+    password = os.getenv("PGPASSWORD", "")
+    host = os.getenv("PGHOST", "localhost")
+    port = os.getenv("PGPORT", "5432")
+    database = os.getenv("PGDATABASE", "radar_pericial")
+    
+    from urllib.parse import quote_plus
+    password = quote_plus(password)  # Codifica senha com caracteres especiais
+    
+    _raw_db_url = f"postgresql://{user}:{password}@{host}:{port}/{database}"
 
-_raw_db_url = os.getenv(
-    "DATABASE_URL",
-    "postgresql://radar:radar123@localhost:5432/radar_pericial",
-)
-# SQLAlchemy 2.0 requires an explicit driver in the URL scheme.
-# Convert bare `postgresql://` → `postgresql+psycopg2://`; leave everything
-# else (e.g. already-qualified URLs or other dialects) untouched.
+# Garante driver psycopg2 para SQLAlchemy 2.0
 if _raw_db_url.startswith("postgresql://"):
     DATABASE_URL = _raw_db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 else:

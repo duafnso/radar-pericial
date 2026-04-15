@@ -23,10 +23,17 @@ from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 
-DATABASE_URL = os.getenv(
+_raw_db_url = os.getenv(
     "DATABASE_URL",
     "postgresql://radar:radar123@localhost:5432/radar_pericial",
 )
+# SQLAlchemy 2.0 requires an explicit driver in the URL scheme.
+# Convert bare `postgresql://` → `postgresql+psycopg2://`; leave everything
+# else (e.g. already-qualified URLs or other dialects) untouched.
+if _raw_db_url.startswith("postgresql://"):
+    DATABASE_URL = _raw_db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
+else:
+    DATABASE_URL = _raw_db_url
 
 # ── Singleton do engine ────────────────────────────────────────────────────
 _engine = None

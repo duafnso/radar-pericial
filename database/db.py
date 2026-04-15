@@ -1,8 +1,6 @@
 """
 database/db.py — PostGIS completo para o Radar Pericial
 """
-
-# ── IMPORTS OBRIGATÓRIOS ─────────────────────────────────────────────
 # ── IMPORTS OBRIGATÓRIOS ─────────────────────────────────────────────
 import logging
 import os

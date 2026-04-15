@@ -3,6 +3,7 @@ database/db.py — PostGIS completo para o Radar Pericial
 """
 
 # ── IMPORTS OBRIGATÓRIOS ─────────────────────────────────────────────
+# ── IMPORTS OBRIGATÓRIOS ─────────────────────────────────────────────
 import logging
 import os
 from typing import Optional
@@ -14,27 +15,32 @@ from urllib.parse import quote_plus
 
 logger = logging.getLogger(__name__)
 
-# ── DEBUG: confirmar que o arquivo está sendo carregado ──────────────
+# ── DEBUG: confirmar carregamento ────────────────────────────────────
 logger.info("🔍 db.py está sendo carregado...")
+
+# ── Defaults para variáveis de conexão (evita NameError) ─────────────
+host = os.getenv("PGHOST", "localhost")
+port = os.getenv("PGPORT", "5432")
+user = os.getenv("PGUSER", "postgres")
+password = os.getenv("PGPASSWORD", "")
+database = os.getenv("PGDATABASE", "radar_pericial")
 
 # ── CONEXÃO COM BANCO (Railway-compatible) ───────────────────────────
 _raw_db_url = os.getenv("DATABASE_URL")
 
 if not _raw_db_url:
-    user = os.getenv("PGUSER", "postgres")
-    password = os.getenv("PGPASSWORD", "")
-    host = os.getenv("PGHOST", "localhost")
-    port = os.getenv("PGPORT", "5432")
-    database = os.getenv("PGDATABASE", "radar_pericial")
-    password = quote_plus(password)
-    _raw_db_url = f"postgresql://{user}:{password}@{host}:{port}/{database}"
+    # Monta URL com variáveis PG* do Railway
+    password_encoded = quote_plus(password)
+    _raw_db_url = f"postgresql://{user}:{password_encoded}@{host}:{port}/{database}"
+    logger.info(f"🔗 DATABASE_URL montada: {host}:{port}/{database}")
+else:
+    logger.info("🔗 DATABASE_URL fornecida via variável de ambiente")
 
+# Garante driver psycopg2 para SQLAlchemy 2.0
 if _raw_db_url.startswith("postgresql://"):
     DATABASE_URL = _raw_db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 else:
     DATABASE_URL = _raw_db_url
-
-logger.info(f"🔗 DATABASE_URL configurada: host={host}, port={port}")
 
 # ── Singleton do engine ──────────────────────────────────────────────
 _engine = None
@@ -51,7 +57,7 @@ def get_engine():
         )
     return _engine
 
-# ── CryptContext com fallback seguro (EVITA NameError no módulo) ────
+# ── CryptContext com fallback seguro ─────────────────────────────────
 def _get_pwd_context():
     """Retorna CryptContext com import local + fallback"""
     try:
@@ -61,7 +67,6 @@ def _get_pwd_context():
         logger.warning(f"⚠️ passlib não disponível: {e}. Usando fallback SHA256.")
         return None
 
-# Inicializa apenas como referência (não usa no módulo-level)
 _pwd_context_ref = _get_pwd_context()
 
 LAYER_TABLE = {

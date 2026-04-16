@@ -7,6 +7,7 @@ Fixes aplicados:
   - Instância _db global reutilizada em todos os endpoints
   - Autenticação real: tokens persistidos no banco, validados via Depends
   - Todos os endpoints sensíveis protegidos com get_current_user
+  - Health checks para Railway (/health e /) SEM autenticação
 """
 
 import logging
@@ -17,9 +18,10 @@ from typing import Annotated, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+from sqlalchemy import text  # ← IMPORTANTE para queries raw
 
 BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))
@@ -37,32 +39,59 @@ _db: Database = None
 async def lifespan(app: FastAPI):
     """Inicializa o banco UMA VEZ no startup — nunca em cada requisição."""
     global _db
-    init_db()
-    _db = Database()
-    logger.info("API iniciada, banco pronto.")
-    yield
-    logger.info("API encerrando.")
+    logger.info("🚀 [LIFESPAN] Iniciando aplicação...")
+    try:
+        init_db()
+        _db = Database()
+        logger.info("✅ [LIFESPAN] Banco conectado, API pronta para requests!")
+    except Exception as e:
+        logger.error(f"❌ [LIFESPAN] Falha crítica no startup: {e}")
+        raise  # Re-raise para o Railway detectar falha
+    yield  # ← ESSENCIAL: mantém o app rodando
+    logger.info("🛑 [LIFESPAN] Encerrando aplicação...")
 
 
 app = FastAPI(title="Radar Pericial", version="2.0", docs_url="/docs", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
-# ── Health Checks para Railway (SEM autenticação) ────────────────────────
+
+# ── Health Checks para Railway (SEM autenticação) ─────────────────────────
 @app.get("/health")
 async def railway_health():
-    """Health check simples para o Railway - não requer auth"""
-    return {"status": "healthy", "service": "radar-pericial"}
+    """Health check simples para o Railway — não requer auth"""
+    try:
+        # Teste rápido de conexão com o banco
+        if _db:
+            with _db.engine.connect() as conn:
+                conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "service": "radar-pericial", "database": "connected"}
+    except Exception as e:
+        logger.warning(f"⚠️ Health check warning: {e}")
+        return {"status": "degraded", "service": "radar-pericial", "database": "error"}
 
 @app.get("/")
 async def root():
-    """Rota raiz para health check e teste - não requer auth"""
+    """Rota raiz para health check e teste — não requer auth"""
     return {
         "message": "🚀 Radar Pericial API está rodando!",
         "docs": "/docs",
         "health": "/health",
         "api_health": "/api/health"
     }
+
+# ── Middleware de log de requests (opcional, útil para debug) ─────────────
+@app.middleware("http")
+async def log_requests(request, call_next):
+    path = request.url.path
+    if path not in ["/health", "/", "/docs", "/openapi.json"]:  # Silencia logs excessivos
+        logger.info(f"📥 {request.method} {path}")
+    response = await call_next(request)
+    if path not in ["/health", "/", "/docs", "/openapi.json"]:
+        logger.info(f"📤 {request.method} {path} → {response.status_code}")
+    return response
+
+# ── Static files ──────────────────────────────────────────────────────────
 static_dir = BASE_DIR / "interface" / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
@@ -103,17 +132,24 @@ async def login(body: LoginInput):
 
 
 # ── Frontend ───────────────────────────────────────────────────────────────
+@app.get("/index.html", response_class=HTMLResponse)
+async def index_html():
+    """Redireciona index.html para /"""
+    return await index()
+
 @app.get("/", response_class=HTMLResponse)
 async def index():
     f = BASE_DIR / "interface" / "templates" / "index.html"
     if not f.exists():
-        raise HTTPException(404, "index.html não encontrado")
+        # Retorna JSON se HTML não existir (fallback para health check)
+        return {"message": "Radar Pericial API", "docs": "/docs"}
     return HTMLResponse(f.read_text(encoding="utf-8"))
 
 
 @app.get("/api/health")
-async def health():
-    return {"status": "ok", "service": "Radar Pericial v2"}
+async def api_health(_user: AuthUser = None):
+    """Health check da API — requer autenticação"""
+    return {"status": "ok", "service": "Radar Pericial v2", "authenticated": True}
 
 
 # ── Stats ──────────────────────────────────────────────────────────────────

@@ -5,7 +5,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1
 
-# System deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gdal-bin libgdal-dev libpq-dev gcc g++ curl \
     && rm -rf /var/lib/apt/lists/* && apt-get clean
@@ -25,6 +24,6 @@ RUN for d in collector database alerts interface etl intelligence api; do \
 
 EXPOSE 8000
 
-# ⚠️ SEM HEALTHCHECK - Railway gerencia isso
+# ⚠️ SEM HEALTHCHECK - Railway gerencia
 
 CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]

@@ -1,3 +1,14 @@
+# ── FastAPI / Servidor ──────────────────────────────────────────────
+fastapi==0.110.0
+uvicorn==0.29.0
+python-multipart==0.0.9
+pydantic==2.6.4
+
+# ── Banco de dados ───────────────────────────────────────────────────
+sqlalchemy==2.0.27
+psycopg2-binary==2.9.9
+geoalchemy2==0.14.3
+
 # ── Geoespacial ──────────────────────────────────────────────────────
 geopandas==0.14.3
 shapely==2.0.3
@@ -5,22 +16,15 @@ fiona==1.9.5
 pyproj==3.6.1
 owslib==0.29.3
 
-# ── Banco de dados ───────────────────────────────────────────────────
-sqlalchemy==2.0.27
-psycopg2-binary==2.9.9
-geoalchemy2==0.14.3
-
-# ── HTTP / scraping ──────────────────────────────────────────────────
+# ── HTTP / Scraping ──────────────────────────────────────────────────
 requests==2.31.0
 urllib3==2.2.1
 beautifulsoup4==4.12.3
 lxml==5.1.0
-passlib[bcrypt]==1.7.4 
-# ── FastAPI ──────────────────────────────────────────────────────────
-fastapi==0.110.0
-uvicorn[standard]==0.29.0
-python-multipart==0.0.9
-pydantic==2.6.4
+
+# ── Autenticação / Senhas ────────────────────────────────────────────
+passlib==1.7.4
+bcrypt==4.1.2
 
 # ── Celery + Redis ───────────────────────────────────────────────────
 celery==5.3.6
@@ -33,5 +37,3 @@ numpy==1.26.4
 
 # ── Utilitários ──────────────────────────────────────────────────────
 python-dotenv==1.0.1
-passlib==1.7.4
-bcrypt==4.1.2

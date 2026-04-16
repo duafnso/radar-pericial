@@ -62,17 +62,18 @@ async def _run_demo_collection():
     if os.getenv("LOAD_DEMO_DATA", "").lower() != "true":
         logger.info("ℹ️  LOAD_DEMO_DATA desativado - pulando dados demo")
         return
-
+    
     logger.info("🔄 LOAD_DEMO_DATA ativado - iniciando coleta demo automática...")
     
     try:
-        demo_script = BASE_DIR / "run_collect.py"
+        # ✅ Aponta para o arquivo correto que gera os dados demo solicitados
+        demo_script = BASE_DIR / "working_data_collector.py"
         
         if not demo_script.exists():
-            logger.warning(f"⚠️  Script run_collect.py não encontrado em: {demo_script}")
+            logger.warning(f"⚠️  working_data_collector.py não encontrado em: {demo_script}")
             return
         
-        # Executa em thread separada para não bloquear o event loop async
+        # Executa em thread separada para não bloquear o event loop do FastAPI
         result = await asyncio.to_thread(
             subprocess.run,
             [sys.executable, str(demo_script), "--source", "demo"],
@@ -85,7 +86,7 @@ async def _run_demo_collection():
         if result.returncode == 0:
             logger.info("✅ Dados demo carregados com sucesso!")
             # Loga as últimas linhas relevantes
-            for line in result.stdout.strip().split('\n')[-8:]:
+            for line in result.stdout.strip().split('\n')[-10:]:
                 if line.strip():
                     logger.info(f"   {line}")
         else:
@@ -94,7 +95,7 @@ async def _run_demo_collection():
     except subprocess.TimeoutExpired:
         logger.error("⏱️  Timeout na coleta demo (300s)")
     except FileNotFoundError:
-        logger.error(f"❌ Python ou script não encontrado")
+        logger.error("❌ Python ou script não encontrado no ambiente")
     except Exception as e:
         logger.error(f"❌ Exceção ao carregar dados demo: {type(e).__name__}: {e}")
 

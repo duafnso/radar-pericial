@@ -48,7 +48,21 @@ app = FastAPI(title="Radar Pericial", version="2.0", docs_url="/docs", lifespan=
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"]
 )
+# ── Health Checks para Railway (SEM autenticação) ────────────────────────
+@app.get("/health")
+async def railway_health():
+    """Health check simples para o Railway - não requer auth"""
+    return {"status": "healthy", "service": "radar-pericial"}
 
+@app.get("/")
+async def root():
+    """Rota raiz para health check e teste - não requer auth"""
+    return {
+        "message": "🚀 Radar Pericial API está rodando!",
+        "docs": "/docs",
+        "health": "/health",
+        "api_health": "/api/health"
+    }
 static_dir = BASE_DIR / "interface" / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")

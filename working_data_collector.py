@@ -62,7 +62,21 @@ def generate_demo_data():
         today = datetime.date.today()
         base_lon, base_lat = -56.0, -13.0
         
-        # 1. Municípios (20) - ✅ CORRIGIDO: usa codigo_ibge para ON CONFLICT
+        # ✅ Limpa dados demo anteriores para evitar duplicatas
+        logger.info("🧹 Limpando dados demo anteriores...")
+        conn.execute(text("DELETE FROM score_pericial WHERE processo_id IN (SELECT id FROM processos WHERE origem = 'Sistema Demo')"))
+        conn.execute(text("DELETE FROM movimentacoes WHERE processo_id IN (SELECT id FROM processos WHERE origem = 'Sistema Demo')"))
+        conn.execute(text("DELETE FROM processos WHERE origem = 'Sistema Demo'"))
+        conn.execute(text("DELETE FROM parcelas_sigef WHERE fonte = 'SIGEF-DEMO'"))
+        conn.execute(text("DELETE FROM municipios_mt WHERE fonte = 'IBGE-DEMO'"))
+        conn.execute(text("DELETE FROM portarias_diario_oficial WHERE fonte IN ('INCRA/MT', 'SIGEF-DEMO') AND orgao = 'INCRA/MT'"))
+        conn.execute(text("DELETE FROM assentamentos_incra WHERE fonte = 'INCRA-DEMO'"))
+        conn.execute(text("DELETE FROM inpe_deter WHERE fonte = 'INPE-DEMO'"))
+        conn.execute(text("DELETE FROM inpe_prodes WHERE fonte = 'INPE-PRODES'"))
+        conn.execute(text("DELETE FROM peritos_agronomos WHERE registro_profissional LIKE 'CREA-MT %'"))
+        conn.commit()
+        
+        # 1. Municípios (20) - ✅ SEM ON CONFLICT
         logger.info("📍 Inserindo 20 Municípios MT...")
         for i, mun in enumerate(MT_MUNICIPIOS):
             regiao = IMEA_REGIOES[i % 6]
@@ -71,7 +85,6 @@ def generate_demo_data():
             conn.execute(text("""
                 INSERT INTO municipios_mt (codigo_ibge, nome, regiao_imea, microrregiao, mesorregiao, prioridade_monitoramento, fonte, geometry)
                 VALUES (:ibge, :nome, :reg, 'Microrregião Demo', 'Mesorregião Demo', 1, 'IBGE-DEMO', ST_GeomFromText(:wkt, 4326))
-                ON CONFLICT (codigo_ibge) DO NOTHING
             """), {"ibge": f"510{i+1:03}0", "nome": mun, "reg": regiao, "wkt": wkt})
         conn.commit()
 
@@ -88,7 +101,6 @@ def generate_demo_data():
             conn.execute(text("""
                 INSERT INTO parcelas_sigef (codigo_imovel, municipio, area_ha, situacao, desapropriacao_flag, tipo_camada, fonte, coletado_em, geometry)
                 VALUES (:cod, :mun, :area, :sit, :desp, 'parcela_rural', 'SIGEF-DEMO', NOW(), ST_GeomFromText(:wkt, 4326))
-                ON CONFLICT (codigo_imovel) DO NOTHING
             """), {"cod": f"SIGEF-MT-{i+1:04}", "mun": mun, "area": area, "sit": sit, "desp": desp, "wkt": wkt})
         conn.commit()
 
@@ -102,17 +114,9 @@ def generate_demo_data():
             result = conn.execute(text("""
                 INSERT INTO processos (numero_cnj, tribunal, comarca, vara, classe_processual, assunto_principal, data_distribuicao, fase_atual, origem, municipio, regiao_imea, ativo, criado_em, atualizado_em)
                 VALUES (:cnj, 'TJ-MT', :mun, 'Vara Agrária', :classe, :assunto, :data, 'Em andamento', 'Sistema Demo', :mun, :regiao, TRUE, NOW(), NOW())
-                ON CONFLICT (numero_cnj) DO NOTHING
                 RETURNING id
             """), {"cnj": cnj, "mun": mun, "classe": random.choice(CLASSES_PROCESSUAIS), "assunto": random.choice(ASSUNTOS), "data": random_date(datetime.date(2023,1,1), today), "regiao": regiao})
-            row = result.fetchone()
-            if row:
-                proc_ids.append(row[0])
-            else:
-                # Se já existia, busca o ID
-                existing = conn.execute(text("SELECT id FROM processos WHERE numero_cnj = :cnj"), {"cnj": cnj}).fetchone()
-                if existing:
-                    proc_ids.append(existing[0])
+            proc_ids.append(result.fetchone()[0])
         conn.commit()
 
         # 4. Scores (15)
@@ -127,7 +131,6 @@ def generate_demo_data():
                     conn.execute(text("""
                         INSERT INTO score_pericial (processo_id, score_total, score_classe, score_assunto, score_movimentacao, score_publicacao, score_administrativo, faixa_probabilidade, faixa_label, tipo_pericia_sugerida, categorias_detectadas, urgencia, calculado_em)
                         VALUES (:pid, :score, 15, 15, 15, 10, 10, :faixa, :label, 'Avaliação Agronômica', 'Desapropriação;Avaliação Rural', :urg, NOW())
-                        ON CONFLICT (processo_id) DO NOTHING
                     """), {"pid": pid, "score": score, "faixa": faixa, "label": label, "urg": urg})
                     idx += 1
         conn.commit()

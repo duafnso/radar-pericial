@@ -12,6 +12,17 @@ Fixes aplicados:
 
 import logging
 import sys
+import signal
+
+def _signal_handler(signum, frame):
+    logger.info(f"🚨 [SIGNAL] Recebido sinal {signum} - mantendo processo vivo por 10s para debug")
+    import time
+    time.sleep(10)  # Dá tempo de ver o log antes de sair
+    sys.exit(0)
+
+# Registra handlers para sinais comuns de término
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Optional

@@ -55,14 +55,14 @@ _db: Optional[Database] = None
 
 # ── Carregamento Automático de Dados Demo ──────────────────────────────────
 async def _run_demo_collection():
-    # """
-   # Executa coleta de dados demo automaticamente no startup.
-    # Controlado pela variável de ambiente LOAD_DEMO_DATA=true
-    # """
-    # if os.getenv("LOAD_DEMO_DATA", "").lower() != "true":
-        # logger.info("ℹ️  LOAD_DEMO_DATA desativado - pulando dados demo")
-       # return 
-    
+    """
+    Executa coleta de dados demo automaticamente no startup.
+    Controlado pela variável de ambiente LOAD_DEMO_DATA=true
+    """
+    if os.getenv("LOAD_DEMO_DATA", "").lower() != "true":
+        logger.info("ℹ️  LOAD_DEMO_DATA desativado - pulando dados demo")
+        return
+
     logger.info("🔄 LOAD_DEMO_DATA ativado - iniciando coleta demo automática...")
     
     try:

@@ -112,27 +112,11 @@ def run_score():
 # ── Demo offline ──────────────────────────────────────────────────────
 def run_demo():
     from database.db import Database
-    from working_data_collector import WorkingDataCollector
+    from working_data_collector import generate_demo_data
 
-    db        = Database()
-    collector = WorkingDataCollector()
+    generate_demo_data()
 
-    # Usa populate_all que carrega os 20 tipos de conteúdo diretamente no banco
-    try:
-        collector.populate_all(db)
-    except Exception as e:
-        logger.error(f"populate_all falhou: {e} — tentando método legado")
-        data = collector.create_realistic_data()
-        data = collector.convert_to_geodataframes(data)
-        if data.get("municipios") is not None:
-            db.save_geodataframe(data["municipios"], "municipios_mt")
-        if data.get("desapropriacao") is not None:
-            desaprop = data["desapropriacao"].copy()
-            desaprop["desapropriacao_flag"] = True
-            desaprop["fonte"] = "DEMO/Offline"
-            desaprop["coletado_em"] = datetime.utcnow()
-            db.save_geodataframe(desaprop, "parcelas_sigef")
-
+    db = Database()
     logger.info("Demo carregado com sucesso.")
     _stats(db)
 

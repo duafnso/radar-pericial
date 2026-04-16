@@ -10,29 +10,39 @@ Fixes aplicados:
   - Health checks para Railway (/health e /) SEM autenticação
 """
 
+"""
+api/main.py — Radar Pericial v2
+FastAPI: serve o HTML e expõe REST API com dados reais do banco PostGIS.
+"""
+
 import logging
 import sys
 import signal
-
-def _signal_handler(signum, frame):
-    logger.info(f"🚨 [SIGNAL] Recebido sinal {signum} - mantendo processo vivo por 10s para debug")
-    import time
-    time.sleep(10)  # Dá tempo de ver o log antes de sair
-    sys.exit(0)
-
-# Registra handlers para sinais comuns de término
-signal.signal(signal.SIGTERM, _signal_handler)
-signal.signal(signal.SIGINT, _signal_handler)
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Optional
 
+# ── Define logger ANTES de qualquer uso ──────────────────────────────────
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+# ── Signal handler (AGORA com logger disponível) ────────────────────────
+def _signal_handler(signum, frame):
+    """Handler para sinais de término - NÃO chama sys.exit() para Railway"""
+    logger.info(f"🚨 [SIGNAL] Recebido sinal {signum} - permitindo shutdown normal")
+    # NÃO chamamos sys.exit() aqui! Deixe o uvicorn/FastAPI gerenciar o shutdown
+
+# Registra handlers APÓS logger estar definido
+signal.signal(signal.SIGTERM, _signal_handler)
+signal.signal(signal.SIGINT, _signal_handler)
+
+# ── Imports do projeto ─────────────────────────────────────────────────
 from fastapi import Depends, FastAPI, Header, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import text  # ← IMPORTANTE para queries raw
+from sqlalchemy import text
 
 BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))

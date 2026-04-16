@@ -27,18 +27,21 @@ def get_db_url():
         db = os.getenv("PGDATABASE", "radar_pericial")
         url = f"postgresql://{user}:{quote_plus(pwd)}@{host}:{port}/{db}"
     
-    # ✅ Correção SQLAlchemy 2.x: força dialect correto
+    # Corrige URL para SQLAlchemy 2.x
     if url.startswith("postgres://"):
         url = url.replace("postgres://", "postgresql://", 1)
     if url.startswith("postgresql://") and "+psycopg2" not in url:
         url = url.replace("postgresql://", "postgresql+psycopg2://", 1)
     return url
 
+# ── Dados Auxiliares ─────────────────────────────────────────────────────
 IMEA_REGIOES = ["Médio-Norte", "Norte", "Centro-Sul", "Oeste", "Leste", "Sudoeste"]
-MT_MUNICIPIOS = ["Cuiabá", "Várzea Grande", "Rondonópolis", "Sinop", "Tangará da Serra",
-                 "Cáceres", "Sorriso", "Lucas do Rio Verde", "Barra do Garças", "Primavera do Leste",
-                 "Campo Verde", "Alta Floresta", "Juína", "Peixoto de Azevedo", "Pontes e Lacerda",
-                 "Confresa", "Nova Mutum", "Diamantino", "Guarantã do Norte", "Matupá"]
+MT_MUNICIPIOS = [
+    "Cuiabá", "Várzea Grande", "Rondonópolis", "Sinop", "Tangará da Serra",
+    "Cáceres", "Sorriso", "Lucas do Rio Verde", "Barra do Garças", "Primavera do Leste",
+    "Campo Verde", "Alta Floresta", "Juína", "Peixoto de Azevedo", "Pontes e Lacerda",
+    "Confresa", "Nova Mutum", "Diamantino", "Guarantã do Norte", "Matupá"
+]
 CLASSES_PROCESSUAIS = ["Desapropriação", "Servidão Administrativa", "Ação Possessória", "Dano Ambiental", "Usucapião Rural"]
 ASSUNTOS = ["Avaliação de imóvel rural", "Indenização por benfeitorias", "Limitação administrativa", "Reintegração de posse", "Regularização fundiária"]
 FONTES_DO = ["D.O.U.", "D.O.E.-MT", "Diário de Justiça", "Portal Gov.br", "SINFRA-MT"]
@@ -59,7 +62,7 @@ def generate_demo_data():
         today = datetime.date.today()
         base_lon, base_lat = -56.0, -13.0
         
-        # 1. Municípios (20)
+        # 1. Municípios (20) - ✅ CORRIGIDO: usa codigo_ibge para ON CONFLICT
         logger.info("📍 Inserindo 20 Municípios MT...")
         for i, mun in enumerate(MT_MUNICIPIOS):
             regiao = IMEA_REGIOES[i % 6]
@@ -68,13 +71,12 @@ def generate_demo_data():
             conn.execute(text("""
                 INSERT INTO municipios_mt (codigo_ibge, nome, regiao_imea, microrregiao, mesorregiao, prioridade_monitoramento, fonte, geometry)
                 VALUES (:ibge, :nome, :reg, 'Microrregião Demo', 'Mesorregião Demo', 1, 'IBGE-DEMO', ST_GeomFromText(:wkt, 4326))
-                ON CONFLICT (nome) DO NOTHING
+                ON CONFLICT (codigo_ibge) DO NOTHING
             """), {"ibge": f"510{i+1:03}0", "nome": mun, "reg": regiao, "wkt": wkt})
         conn.commit()
 
-        # 2. Parcelas SIGEF (20: 11 desapropriação, 3 vistoriados, 6 certificados)
+        # 2. Parcelas SIGEF (20)
         logger.info("🚜 Inserindo 20 Parcelas SIGEF...")
-        proc_ids = []
         for i in range(20):
             mun = random.choice(MT_MUNICIPIOS)
             area = round(random.uniform(50, 2000), 2)
@@ -86,21 +88,31 @@ def generate_demo_data():
             conn.execute(text("""
                 INSERT INTO parcelas_sigef (codigo_imovel, municipio, area_ha, situacao, desapropriacao_flag, tipo_camada, fonte, coletado_em, geometry)
                 VALUES (:cod, :mun, :area, :sit, :desp, 'parcela_rural', 'SIGEF-DEMO', NOW(), ST_GeomFromText(:wkt, 4326))
+                ON CONFLICT (codigo_imovel) DO NOTHING
             """), {"cod": f"SIGEF-MT-{i+1:04}", "mun": mun, "area": area, "sit": sit, "desp": desp, "wkt": wkt})
         conn.commit()
 
         # 3. Processos (15)
         logger.info("⚖️ Inserindo 15 Processos Judiciais...")
+        proc_ids = []
         for i in range(15):
             cnj = f"{random.randint(1000000, 9999999)}-{random.randint(10, 99)}.{today.year}.8.{random.randint(10, 99)}.{random.randint(1000, 9999)}"
             mun = random.choice(MT_MUNICIPIOS)
             regiao = IMEA_REGIOES[random.randint(0, 5)]
-            conn.execute(text("""
+            result = conn.execute(text("""
                 INSERT INTO processos (numero_cnj, tribunal, comarca, vara, classe_processual, assunto_principal, data_distribuicao, fase_atual, origem, municipio, regiao_imea, ativo, criado_em, atualizado_em)
                 VALUES (:cnj, 'TJ-MT', :mun, 'Vara Agrária', :classe, :assunto, :data, 'Em andamento', 'Sistema Demo', :mun, :regiao, TRUE, NOW(), NOW())
+                ON CONFLICT (numero_cnj) DO NOTHING
                 RETURNING id
             """), {"cnj": cnj, "mun": mun, "classe": random.choice(CLASSES_PROCESSUAIS), "assunto": random.choice(ASSUNTOS), "data": random_date(datetime.date(2023,1,1), today), "regiao": regiao})
-            proc_ids.append(conn.execute(text("SELECT currval(pg_get_serial_sequence('processos', 'id'))")).scalar())
+            row = result.fetchone()
+            if row:
+                proc_ids.append(row[0])
+            else:
+                # Se já existia, busca o ID
+                existing = conn.execute(text("SELECT id FROM processos WHERE numero_cnj = :cnj"), {"cnj": cnj}).fetchone()
+                if existing:
+                    proc_ids.append(existing[0])
         conn.commit()
 
         # 4. Scores (15)
@@ -109,22 +121,25 @@ def generate_demo_data():
         idx = 0
         for faixa, (count, label, urg) in faixa_map.items():
             for _ in range(count):
-                pid = proc_ids[idx % 15]
-                score = random.randint(75, 100) if faixa=="janela_quente" else random.randint(50, 74) if faixa=="provavel" else random.randint(25, 49) if faixa=="observacao" else random.randint(0, 24)
-                conn.execute(text("""
-                    INSERT INTO score_pericial (processo_id, score_total, score_classe, score_assunto, score_movimentacao, score_publicacao, score_administrativo, faixa_probabilidade, faixa_label, tipo_pericia_sugerida, categorias_detectadas, urgencia, calculado_em)
-                    VALUES (:pid, :score, 15, 15, 15, 10, 10, :faixa, :label, 'Avaliação Agronômica', 'Desapropriação;Avaliação Rural', :urg, NOW())
-                """), {"pid": pid, "score": score, "faixa": faixa, "label": label, "urg": urg})
-                idx += 1
+                if idx < len(proc_ids):
+                    pid = proc_ids[idx]
+                    score = random.randint(75, 100) if faixa=="janela_quente" else random.randint(50, 74) if faixa=="provavel" else random.randint(25, 49) if faixa=="observacao" else random.randint(0, 24)
+                    conn.execute(text("""
+                        INSERT INTO score_pericial (processo_id, score_total, score_classe, score_assunto, score_movimentacao, score_publicacao, score_administrativo, faixa_probabilidade, faixa_label, tipo_pericia_sugerida, categorias_detectadas, urgencia, calculado_em)
+                        VALUES (:pid, :score, 15, 15, 15, 10, 10, :faixa, :label, 'Avaliação Agronômica', 'Desapropriação;Avaliação Rural', :urg, NOW())
+                        ON CONFLICT (processo_id) DO NOTHING
+                    """), {"pid": pid, "score": score, "faixa": faixa, "label": label, "urg": urg})
+                    idx += 1
         conn.commit()
 
         # 5. Movimentações (9)
         logger.info("📝 Inserindo 9 Movimentações...")
         for _ in range(9):
-            conn.execute(text("""
-                INSERT INTO movimentacoes (processo_id, data_movimentacao, descricao, fonte, score_evento, criado_em)
-                VALUES (:pid, :data, :desc, 'Sistema Demo', 15, NOW())
-            """), {"pid": random.choice(proc_ids), "data": random_date(datetime.date(2024,1,1), today), "desc": random.choice(["Nomeação de perito", "Especificação de quesitos", "Apresentação de laudo", "Intimação das partes"])})
+            if proc_ids:
+                conn.execute(text("""
+                    INSERT INTO movimentacoes (processo_id, data_movimentacao, descricao, fonte, score_evento, criado_em)
+                    VALUES (:pid, :data, :desc, 'Sistema Demo', 15, NOW())
+                """), {"pid": random.choice(proc_ids), "data": random_date(datetime.date(2024,1,1), today), "desc": random.choice(["Nomeação de perito", "Especificação de quesitos", "Apresentação de laudo", "Intimação das partes"])})
         conn.commit()
 
         # 6. Portarias DO (10)

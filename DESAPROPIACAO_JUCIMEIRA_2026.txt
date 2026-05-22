@@ -2,7 +2,7 @@
 RELATÓRIO DE DESAPROPRIAÇÕES DE TERRAS
 MUNICÍPIO: JUCIMEIRA - MATO GROSSO (MT)
 PERÍODO: 2026
-DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
+DATA DE GERAÇÃO: 22 de May de 2026 às 17:09:56
 ====================================================================================================
 
 ► INFORMAÇÕES DO MUNICÍPIO
@@ -18,7 +18,7 @@ DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
 ► RESUMO EXECUTIVO
 ────────────────────────────────────────────────────────────────────────────────────────────────────
   Total de áreas em desapropriação: 4
-  Área total em desapropriação: 1272.79 hectares
+  Área total em desapropriação: 1288.23 hectares
   Total de publicações/portarias: 4
 
 ► PARCELAS SIGEF EM DESAPROPRIAÇÃO
@@ -27,34 +27,34 @@ DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
   [1] PARCELA EM DESAPROPRIAÇÃO
       Código do Imóvel: SIGEF-MT-2026-2000
       Município: Jucimeira
-      Área: 164.40 hectares
-      Situação: Processo finalizado
+      Área: 277.74 hectares
+      Situação: Em processo de desapropriação
       Fonte: INCRA/SIGEF
-      Localização: -15.8142, -55.188
+      Localização: -16.0019, -55.0789
 
   [2] PARCELA EM DESAPROPRIAÇÃO
       Código do Imóvel: SIGEF-MT-2026-2001
       Município: Jucimeira
-      Área: 353.07 hectares
-      Situação: Em processo de desapropriação
+      Área: 395.17 hectares
+      Situação: Declarado de interesse social
       Fonte: INCRA/SIGEF
-      Localização: -15.8547, -55.1702
+      Localização: -15.9701, -55.0656
 
   [3] PARCELA EM DESAPROPRIAÇÃO
       Código do Imóvel: SIGEF-MT-2026-2002
       Município: Jucimeira
-      Área: 392.54 hectares
-      Situação: Processo finalizado
+      Área: 395.14 hectares
+      Situação: Declarado de interesse social
       Fonte: INCRA/SIGEF
-      Localização: -15.8913, -55.0683
+      Localização: -15.9289, -55.0585
 
   [4] PARCELA EM DESAPROPRIAÇÃO
       Código do Imóvel: SIGEF-MT-2026-2003
       Município: Jucimeira
-      Área: 362.78 hectares
-      Situação: Aguardando indenização
+      Área: 220.18 hectares
+      Situação: Processo finalizado
       Fonte: INCRA/SIGEF
-      Localização: -15.8397, -55.0347
+      Localização: -15.9945, -55.1653
 
 ────────────────────────────────────────────────────────────────────────────────────────────────────
 
@@ -63,7 +63,7 @@ DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
 
   [1] PUBLICAÇÃO
       Título: Processo de Desapropriação por Interesse Social — Jucimeira, MT
-      Data de Publicação: 2026-01-16
+      Data de Publicação: 2026-01-14
       Município: Jucimeira
       Área: 385.60 hectares
       Órgão: INCRA
@@ -76,7 +76,7 @@ DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
 
   [2] PUBLICAÇÃO
       Título: Vistoria Concluída — Jucimeira
-      Data de Publicação: 2026-02-28
+      Data de Publicação: 2026-02-09
       Município: Jucimeira
       Área: 310.25 hectares
       Órgão: INCRA
@@ -88,7 +88,7 @@ DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
 
   [3] PUBLICAÇÃO
       Título: Publicação de Edital — Jucimeira, MT
-      Data de Publicação: 2026-03-19
+      Data de Publicação: 2026-03-12
       Município: Jucimeira
       Área: 195.80 hectares
       Órgão: INCRA
@@ -100,7 +100,7 @@ DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
 
   [4] PUBLICAÇÃO
       Título: Indenização — Jucimeira
-      Data de Publicação: 2026-04-01
+      Data de Publicação: 2026-04-04
       Município: Jucimeira
       Área: 240.35 hectares
       Órgão: INCRA

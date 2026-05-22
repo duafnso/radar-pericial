@@ -1,0 +1,112 @@
+====================================================================================================
+RELATÓRIO DE DESAPROPRIAÇÕES DE TERRAS
+MUNICÍPIO: JACIARA - MATO GROSSO (MT)
+PERÍODO: 2026
+DATA DE GERAÇÃO: 22 de May de 2026 às 16:30:07
+====================================================================================================
+
+► INFORMAÇÕES DO MUNICÍPIO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nome: Jaciara
+  Código IBGE: 5104807
+  Região IMEA: Sudoeste
+  Microrregião: Tesouro
+  Mesorregião: Sudeste Mato-Grossense
+  Coordenadas (lat/lon): -15.9708 / -54.9683
+  Área total: 1627 km²
+
+► RESUMO EXECUTIVO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Total de áreas em desapropriação: 3
+  Área total em desapropriação: 1054.90 hectares
+  Total de publicações/portarias: 3
+
+► PARCELAS SIGEF EM DESAPROPRIAÇÃO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  [1] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-047
+      Município: Jaciara
+      Área: 485.70 hectares
+      Situação: Em processo de desapropriação
+      Fonte: INCRA/SIGEF
+      Localização: -15.968, -54.963
+
+  [2] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-048
+      Município: Jaciara
+      Área: 312.40 hectares
+      Situação: Declarado de interesse social
+      Fonte: INCRA/SIGEF
+      Localização: -15.955, -54.975
+
+  [3] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-049
+      Município: Jaciara
+      Área: 256.80 hectares
+      Situação: Vistoriado
+      Fonte: INCRA/SIGEF
+      Localização: -15.982, -54.958
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+► PUBLICAÇÕES E PORTARIAS DE DESAPROPRIAÇÃO (2026)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  [1] PUBLICAÇÃO
+      Título: Portaria de Declaração de Interesse Social — Fazenda Esperança, Jaciara MT
+      Data de Publicação: 2026-03-22
+      Município: Jaciara
+      Área: 485.70 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Declara de interesse social para fins de reforma agrária o imóvel rural denominado Fazenda
+        Esperança, com área de 485,7 hectares, situado no Município de Jaciara, Estado de Mato
+        Grosso. Processo INCRA n.º 54250.002847/2026-33. Destinado ao assentamento de 92 famílias
+        de trabalhadores rurais sem terra. Laudo técnico INCRA confirma improdutividade relativa
+        da área. Publicado no Diário Oficial da União.
+      URL: https://www.in.gov.br/web/dou
+
+  [2] PUBLICAÇÃO
+      Título: Vistoria Concluída — Fazenda São Lourenço, Jaciara
+      Data de Publicação: 2026-04-18
+      Município: Jaciara
+      Área: 312.40 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Portaria n.º 256/2026-INCRA — Concluída vistoria do imóvel rural Fazenda São Lourenço,
+        312,4 ha, Município de Jaciara. Laudo técnico atesta produtividade abaixo do GUT (Grau de
+        Utilização da Terra). Processo encaminhado para fase de declaração de interesse social.
+        INCRA processo 54250.003251/2026-15.
+      URL: https://www.in.gov.br/web/dou
+
+  [3] PUBLICAÇÃO
+      Título: Aviso de Inspeção Prévia — Imóvel Rural, Jaciara MT
+      Data de Publicação: 2026-05-08
+      Município: Jaciara
+      Área: 256.80 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Aviso de inspeção prévia para vistoria agronômica de imóvel rural com área de 256,8
+        hectares no Município de Jaciara, conforme Processo INCRA 54250.004122/2026-02. A vistoria
+        será realizada em maio de 2026. Interessados devem se apresentar ao INCRA-MT nos dias e
+        horários estabelecidos.
+      URL: https://www.in.gov.br/web/dou
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+► OBSERVAÇÕES IMPORTANTES
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  1. Este relatório foi gerado automaticamente pelo sistema Radar Pericial.
+  2. Os dados provêm de fontes oficiais: INCRA/SIGEF, DOU e Sistema de Informações Fundiárias.
+  3. As informações são atualizadas regularmente. Para dados mais recentes, consulte:
+     - SIGEF (Certificação INCRA): https://certificacao.incra.gov.br
+     - Diário Oficial da União: https://www.in.gov.br
+     - Radar Pericial: https://github.com/duafnso/radar-pericial
+
+====================================================================================================
+FIM DO RELATÓRIO
+====================================================================================================

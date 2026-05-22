@@ -1,0 +1,147 @@
+====================================================================================================
+RELATÓRIO DE DESAPROPRIAÇÕES DE TERRAS
+MUNICÍPIO: CAMPO VERDE - MATO GROSSO (MT)
+PERÍODO: 2026
+DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
+====================================================================================================
+
+► INFORMAÇÕES DO MUNICÍPIO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nome: Campo Verde
+  Código IBGE: 5102852
+  Região IMEA: Sudoeste
+  Microrregião: Microrregião de Rondonópolis
+  Mesorregião: Mesorregião Sudoeste
+  Coordenadas (lat/lon): -15.533 / -55.16
+  Área total: 3714.67 km²
+
+► RESUMO EXECUTIVO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Total de áreas em desapropriação: 5
+  Área total em desapropriação: 3032.05 hectares
+  Total de publicações/portarias: 5
+
+► PARCELAS SIGEF EM DESAPROPRIAÇÃO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  [1] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2000
+      Município: Campo Verde
+      Área: 615.62 hectares
+      Situação: Declarado de interesse social
+      Fonte: INCRA/SIGEF
+      Localização: -15.6268, -55.1899
+
+  [2] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2001
+      Município: Campo Verde
+      Área: 656.92 hectares
+      Situação: Vistoriado
+      Fonte: INCRA/SIGEF
+      Localização: -15.4821, -55.2386
+
+  [3] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2002
+      Município: Campo Verde
+      Área: 453.69 hectares
+      Situação: Processo finalizado
+      Fonte: INCRA/SIGEF
+      Localização: -15.4807, -55.1939
+
+  [4] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2003
+      Município: Campo Verde
+      Área: 693.02 hectares
+      Situação: Processo finalizado
+      Fonte: INCRA/SIGEF
+      Localização: -15.5001, -55.245
+
+  [5] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2004
+      Município: Campo Verde
+      Área: 612.80 hectares
+      Situação: Processo finalizado
+      Fonte: INCRA/SIGEF
+      Localização: -15.4787, -55.232
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+► PUBLICAÇÕES E PORTARIAS DE DESAPROPRIAÇÃO (2026)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  [1] PUBLICAÇÃO
+      Título: Declaração de Interesse Social — Campo Verde, MT
+      Data de Publicação: 2026-01-01
+      Município: Campo Verde
+      Área: 625.00 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Declara de interesse social para fins de reforma agrária múltiplas propriedades rurais
+        localizadas no Município de Campo Verde. Total de 1.250 hectares em avaliação. Processos
+        INCRA relacionados disponíveis no sistema.
+      URL: https://www.in.gov.br/web/dou
+
+  [2] PUBLICAÇÃO
+      Título: Vistoria Agronômica — Campo Verde
+      Data de Publicação: 2026-02-25
+      Município: Campo Verde
+      Área: 480.50 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Inicia processo de vistoria agronômica de propriedades rurais em Campo Verde. Processo n.º
+        54250.007420/2026-88. Objetivo: avaliar adequação aos critérios de desapropriação para
+        reforma agrária.
+      URL: https://www.in.gov.br/web/dou
+
+  [3] PUBLICAÇÃO
+      Título: Publicação de Resultado — Campo Verde, MT
+      Data de Publicação: 2026-03-17
+      Município: Campo Verde
+      Área: 520.75 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Publica resultado de processo de avaliação de imóveis rurais em Campo Verde. Processo
+        INCRA 54250.007521/2026-35. Total de 3 imóveis identificados como prioritários.
+      URL: https://www.in.gov.br/web/dou
+
+  [4] PUBLICAÇÃO
+      Título: Fase de Indenização — Campo Verde
+      Data de Publicação: 2026-04-06
+      Município: Campo Verde
+      Área: 380.25 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Inicia fase de negociação e indenização de propriedades rurais em Campo Verde, MT.
+        Processo INCRA 54250.007622/2026-02. Prazo estimado: 180 dias. Contato: INCRA-MT.
+      URL: https://www.in.gov.br/web/dou
+
+  [5] PUBLICAÇÃO
+      Título: Assentamento de Famílias — Campo Verde, MT
+      Data de Publicação: 2026-05-27
+      Município: Campo Verde
+      Área: 920.00 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Portaria de assentamento de 280 famílias beneficiárias do PNRA em Campo Verde. Processo
+        n.º 54250.007723/2026-69. Áreas já registradas em nome de beneficiários.
+      URL: https://www.in.gov.br/web/dou
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+► OBSERVAÇÕES IMPORTANTES
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  1. Este relatório foi gerado automaticamente pelo sistema Radar Pericial.
+  2. Os dados provêm de fontes oficiais: INCRA/SIGEF, DOU e Sistema de Informações Fundiárias.
+  3. As informações são atualizadas regularmente. Para dados mais recentes, consulte:
+     - SIGEF (Certificação INCRA): https://certificacao.incra.gov.br
+     - Diário Oficial da União: https://www.in.gov.br
+     - Radar Pericial: https://github.com/duafnso/radar-pericial
+
+====================================================================================================
+FIM DO RELATÓRIO
+====================================================================================================

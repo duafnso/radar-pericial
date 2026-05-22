@@ -1,0 +1,126 @@
+====================================================================================================
+RELATÓRIO DE DESAPROPRIAÇÕES DE TERRAS
+MUNICÍPIO: JUCIMEIRA - MATO GROSSO (MT)
+PERÍODO: 2026
+DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
+====================================================================================================
+
+► INFORMAÇÕES DO MUNICÍPIO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nome: Jucimeira
+  Código IBGE: 5104805
+  Região IMEA: Sudoeste
+  Microrregião: Microrregião do Vale do Rio São Lourenço
+  Mesorregião: Mesorregião Sudoeste
+  Coordenadas (lat/lon): -15.902 / -55.103
+  Área total: 1402.18 km²
+
+► RESUMO EXECUTIVO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Total de áreas em desapropriação: 4
+  Área total em desapropriação: 1272.79 hectares
+  Total de publicações/portarias: 4
+
+► PARCELAS SIGEF EM DESAPROPRIAÇÃO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  [1] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2000
+      Município: Jucimeira
+      Área: 164.40 hectares
+      Situação: Processo finalizado
+      Fonte: INCRA/SIGEF
+      Localização: -15.8142, -55.188
+
+  [2] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2001
+      Município: Jucimeira
+      Área: 353.07 hectares
+      Situação: Em processo de desapropriação
+      Fonte: INCRA/SIGEF
+      Localização: -15.8547, -55.1702
+
+  [3] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2002
+      Município: Jucimeira
+      Área: 392.54 hectares
+      Situação: Processo finalizado
+      Fonte: INCRA/SIGEF
+      Localização: -15.8913, -55.0683
+
+  [4] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2003
+      Município: Jucimeira
+      Área: 362.78 hectares
+      Situação: Aguardando indenização
+      Fonte: INCRA/SIGEF
+      Localização: -15.8397, -55.0347
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+► PUBLICAÇÕES E PORTARIAS DE DESAPROPRIAÇÃO (2026)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  [1] PUBLICAÇÃO
+      Título: Processo de Desapropriação por Interesse Social — Jucimeira, MT
+      Data de Publicação: 2026-01-16
+      Município: Jucimeira
+      Área: 385.60 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Abre processo administrativo de desapropriação por interesse social de imóvel rural
+        localizado em Jucimeira. Processo INCRA 54250.006215/2026-15. Área total: 385 hectares.
+        Assentamento de famílias de trabalhadores rurais.
+      URL: https://www.in.gov.br/web/dou
+
+  [2] PUBLICAÇÃO
+      Título: Vistoria Concluída — Jucimeira
+      Data de Publicação: 2026-02-28
+      Município: Jucimeira
+      Área: 310.25 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Vistoria agronômica concluída em propriedade rural no Município de Jucimeira. Processo n.º
+        54250.006316/2026-02. Parecer técnico: subutilizada para fins de reforma agrária.
+      URL: https://www.in.gov.br/web/dou
+
+  [3] PUBLICAÇÃO
+      Título: Publicação de Edital — Jucimeira, MT
+      Data de Publicação: 2026-03-19
+      Município: Jucimeira
+      Área: 195.80 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Edital n.º 042/2026 — Publica resultado de vistoria de imóvel rural em Jucimeira, MT.
+        Disponível para consulta pública durante 30 dias. Processo INCRA 54250.006417/2026-74.
+      URL: https://www.in.gov.br/web/dou
+
+  [4] PUBLICAÇÃO
+      Título: Indenização — Jucimeira
+      Data de Publicação: 2026-04-01
+      Município: Jucimeira
+      Área: 240.35 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Portaria de indenização de imóvel rural em Jucimeira. Processo INCRA 54250.006518/2026-41.
+        Valor conforme avaliação técnica. Prazo para recursos: 15 dias úteis.
+      URL: https://www.in.gov.br/web/dou
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+► OBSERVAÇÕES IMPORTANTES
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  1. Este relatório foi gerado automaticamente pelo sistema Radar Pericial.
+  2. Os dados provêm de fontes oficiais: INCRA/SIGEF, DOU e Sistema de Informações Fundiárias.
+  3. As informações são atualizadas regularmente. Para dados mais recentes, consulte:
+     - SIGEF (Certificação INCRA): https://certificacao.incra.gov.br
+     - Diário Oficial da União: https://www.in.gov.br
+     - Radar Pericial: https://github.com/duafnso/radar-pericial
+
+====================================================================================================
+FIM DO RELATÓRIO
+====================================================================================================

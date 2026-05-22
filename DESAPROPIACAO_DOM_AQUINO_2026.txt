@@ -1,0 +1,87 @@
+====================================================================================================
+RELATÓRIO DE DESAPROPRIAÇÕES DE TERRAS
+MUNICÍPIO: DOM AQUINO - MATO GROSSO (MT)
+PERÍODO: 2026
+DATA DE GERAÇÃO: 22 de May de 2026 às 17:03:46
+====================================================================================================
+
+► INFORMAÇÕES DO MUNICÍPIO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Nome: Dom Aquino
+  Código IBGE: 5103404
+  Região IMEA: Sudoeste
+  Microrregião: Microrregião do Vale do Rio São Lourenço
+  Mesorregião: Mesorregião Sudoeste
+  Coordenadas (lat/lon): -15.841 / -54.524
+  Área total: 1584.25 km²
+
+► RESUMO EXECUTIVO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  Total de áreas em desapropriação: 2
+  Área total em desapropriação: 1048.76 hectares
+  Total de publicações/portarias: 2
+
+► PARCELAS SIGEF EM DESAPROPRIAÇÃO
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  [1] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2000
+      Município: Dom Aquino
+      Área: 499.11 hectares
+      Situação: Aguardando indenização
+      Fonte: INCRA/SIGEF
+      Localização: -15.8824, -54.4736
+
+  [2] PARCELA EM DESAPROPRIAÇÃO
+      Código do Imóvel: SIGEF-MT-2026-2001
+      Município: Dom Aquino
+      Área: 549.65 hectares
+      Situação: Declarado de interesse social
+      Fonte: INCRA/SIGEF
+      Localização: -15.8463, -54.5667
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+► PUBLICAÇÕES E PORTARIAS DE DESAPROPRIAÇÃO (2026)
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  [1] PUBLICAÇÃO
+      Título: Portaria de Vistoria Agronômica — Dom Aquino, MT
+      Data de Publicação: 2026-01-21
+      Município: Dom Aquino
+      Área: 420.15 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Portaria n.º 145/2026-INCRA — Autoriza vistoria agronômica de imóvel rural com área de 420
+        hectares no Município de Dom Aquino, MT. Processo INCRA 54250.005103/2026-21. Objetivo:
+        avaliar produtividade e potencial de reforma agrária.
+      URL: https://www.in.gov.br/web/dou
+
+  [2] PUBLICAÇÃO
+      Título: Declaração de Interesse Social — Propriedade Rural, Dom Aquino
+      Data de Publicação: 2026-02-02
+      Município: Dom Aquino
+      Área: 298.50 hectares
+      Órgão: INCRA
+      Fonte: DOU
+      Resumo:
+        Declara de interesse social para fins de reforma agrária propriedade rural no Município de
+        Dom Aquino. Processo n.º 54250.005204/2026-88. Área conforme laudo: 298 hectares.
+        Destinado à beneficiários do programa PNRA.
+      URL: https://www.in.gov.br/web/dou
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+► OBSERVAÇÕES IMPORTANTES
+────────────────────────────────────────────────────────────────────────────────────────────────────
+  1. Este relatório foi gerado automaticamente pelo sistema Radar Pericial.
+  2. Os dados provêm de fontes oficiais: INCRA/SIGEF, DOU e Sistema de Informações Fundiárias.
+  3. As informações são atualizadas regularmente. Para dados mais recentes, consulte:
+     - SIGEF (Certificação INCRA): https://certificacao.incra.gov.br
+     - Diário Oficial da União: https://www.in.gov.br
+     - Radar Pericial: https://github.com/duafnso/radar-pericial
+
+====================================================================================================
+FIM DO RELATÓRIO
+====================================================================================================

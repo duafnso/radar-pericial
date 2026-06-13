@@ -29,11 +29,16 @@ logger = logging.getLogger(__name__)
 def run_geo():
     from database.db import Database
     from collector.multi_source_collector import MultiSourceCollector
-    from etl.geospatial_etl import run_etl
+    from etl.geospatial_etl import clean_gdf, run_etl
+    import geopandas as gpd
 
     db  = Database()
     raw = MultiSourceCollector().run()
-    cleaned = run_etl(raw, municipios=raw.get("municipios_mt"))
+    municipios_clean = None
+    mun_raw = raw.get("municipios_mt")
+    if mun_raw is not None and isinstance(mun_raw, gpd.GeoDataFrame) and not mun_raw.empty:
+        municipios_clean = clean_gdf(mun_raw, name="municipios_mt")
+    cleaned = run_etl(raw, municipios=municipios_clean)
     db.save_all_layers(cleaned)
 
     sigef = cleaned.get("sigef_parcelas")

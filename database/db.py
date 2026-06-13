@@ -5,6 +5,7 @@ database/db.py — PostGIS completo para o Radar Pericial
 import logging
 import os
 import hashlib
+import hmac
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -70,6 +71,11 @@ def _get_pwd_context():
         ) from e
 
 _pwd_context_ref = _get_pwd_context()
+_SESSION_TOKEN_PEPPER = os.getenv("SESSION_TOKEN_PEPPER", os.getenv("SECRET_KEY", "dev-token-pepper"))
+
+
+def _hash_session_token(token: str) -> str:
+    return hmac.new(_SESSION_TOKEN_PEPPER.encode(), token.encode(), hashlib.sha256).hexdigest()
 
 LAYER_TABLE = {
     "municipios_mt": "municipios_mt",
@@ -282,11 +288,16 @@ class Database:
         """
         with self.engine.connect() as conn:
             conn.execute(text(sql))
-            h = _pwd_context_ref.hash(os.getenv("DEFAULT_ADMIN_PASSWORD", "admin"))
-            conn.execute(text(
-                "INSERT INTO usuarios (username, password_hash) "
-                "VALUES ('admin', :h) ON CONFLICT (username) DO NOTHING"
-            ), {"h": h})
+            default_admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD")
+            if default_admin_password:
+                h = _pwd_context_ref.hash(default_admin_password)
+                conn.execute(text(
+                    "INSERT INTO usuarios (username, password_hash) "
+                    "VALUES ('admin', :h) "
+                    "ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash"
+                ), {"h": h})
+            else:
+                logger.warning("DEFAULT_ADMIN_PASSWORD ausente; usuário admin padrão não foi criado.")
             conn.commit()
         logger.info("✅ Schema inicializado.")
 
@@ -304,7 +315,7 @@ class Database:
                 return False
             try:
                 return bool(pwd_ctx.verify(password_raw, stored))
-            except Exception:
+            except (ValueError, TypeError):
                 logger.warning("Hash de senha inválido para usuário '%s'.", username)
                 return False
 
@@ -316,7 +327,7 @@ class Database:
         ttl_hours: int = 24,
     ) -> str:
         token = secrets.token_urlsafe(48)
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        token_hash = _hash_session_token(token)
         expira = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
         with self.engine.connect() as conn:
             user = conn.execute(
@@ -350,7 +361,7 @@ class Database:
     ) -> Optional[str]:
         if not token:
             return None
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        token_hash = _hash_session_token(token)
         with self.engine.connect() as conn:
             row = conn.execute(
                 text("""
@@ -382,7 +393,7 @@ class Database:
     def revoke_token(self, token: str) -> bool:
         if not token:
             return False
-        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        token_hash = _hash_session_token(token)
         with self.engine.connect() as conn:
             res = conn.execute(
                 text("""

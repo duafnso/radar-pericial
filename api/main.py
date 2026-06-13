@@ -127,9 +127,11 @@ async def lifespan(app: FastAPI):
 
 # ── Criação da aplicação FastAPI ──────────────────────────────────────────
 def _parse_cors_origins() -> list[str]:
-    raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000")
+    raw = os.getenv("CORS_ALLOW_ORIGINS")
+    if raw is None:
+        return ["http://localhost:8000", "http://127.0.0.1:8000"]
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return origins or ["http://localhost:8000"]
+    return origins
 
 
 app = FastAPI(
@@ -143,10 +145,11 @@ app = FastAPI(
 
 # CORS middleware
 cors_origins = _parse_cors_origins()
+allow_credentials = len(cors_origins) > 0 and "*" not in cors_origins
 app.add_middleware(
     CORSMiddleware,
     allow_origins=cors_origins,
-    allow_credentials="*" not in cors_origins,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -178,12 +181,16 @@ async def readiness():
         details["database_error"] = str(e)
 
     redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    rc = None
     try:
         import redis
         rc = redis.from_url(redis_url, socket_connect_timeout=2, socket_timeout=2)
         deps["redis"] = bool(rc.ping())
     except Exception as e:
         details["redis_error"] = str(e)
+    finally:
+        if rc is not None:
+            rc.close()
 
     try:
         from alerts.scheduler import app as celery_app
@@ -309,8 +316,8 @@ async def login(body: LoginInput, request: Request):
 
 @app.post("/api/logout")
 async def logout(
+    _user: AuthUser,
     authorization: Annotated[Optional[str], Header()] = None,
-    _user: AuthUser = None
 ):
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token de autenticação não fornecido")
@@ -321,7 +328,7 @@ async def logout(
     return {"status": "ok"}
 
 @app.get("/api/health")
-async def api_health(_user: AuthUser = None):
+async def api_health(_user: AuthUser):
     """Health check da API — requer autenticação"""
     return {"status": "ok", "service": "Radar Pericial v2", "authenticated": True}
 

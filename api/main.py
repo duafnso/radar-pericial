@@ -34,12 +34,11 @@ except Exception as e:
     logger.warning(f"⚠️ Não foi possível registrar signal handlers: {e}")
 
 # ── Imports do FastAPI e dependências ─────────────────────────────────────
-from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from sqlalchemy import text
 
 # ── Configuração de caminhos ──────────────────────────────────────────────
 BASE_DIR = Path(__file__).parent.parent
@@ -127,6 +126,12 @@ async def lifespan(app: FastAPI):
 
 
 # ── Criação da aplicação FastAPI ──────────────────────────────────────────
+def _parse_cors_origins() -> list[str]:
+    raw = os.getenv("CORS_ALLOW_ORIGINS", "http://localhost:8000,http://127.0.0.1:8000")
+    origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    return origins or ["http://localhost:8000"]
+
+
 app = FastAPI(
     title="Radar Pericial",
     version="2.0",
@@ -137,10 +142,11 @@ app = FastAPI(
 )
 
 # CORS middleware
+cors_origins = _parse_cors_origins()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials="*" not in cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -151,6 +157,47 @@ app.add_middleware(
 async def railway_health():
     """Health check mínimo para Railway — SEM query no banco"""
     return {"status": "healthy", "service": "radar-pericial"}
+
+@app.get("/health/live")
+async def liveness():
+    """Liveness probe: verifica se a aplicação está viva."""
+    return {"status": "alive", "service": "radar-pericial"}
+
+@app.get("/health/ready")
+async def readiness():
+    """Readiness probe: verifica dependências essenciais."""
+    deps = {"database": False, "redis": False, "celery": False}
+    details = {}
+
+    try:
+        if not _db:
+            raise RuntimeError("Database não inicializado")
+        _db.query("SELECT 1")
+        deps["database"] = True
+    except Exception as e:
+        details["database_error"] = str(e)
+
+    redis_url = os.getenv("REDIS_URL", "redis://redis:6379/0")
+    try:
+        import redis
+        rc = redis.from_url(redis_url, socket_connect_timeout=2, socket_timeout=2)
+        deps["redis"] = bool(rc.ping())
+    except Exception as e:
+        details["redis_error"] = str(e)
+
+    try:
+        from alerts.scheduler import app as celery_app
+        with celery_app.connection_for_read() as conn:
+            conn.ensure_connection(max_retries=1)
+        deps["celery"] = True
+    except Exception as e:
+        details["celery_error"] = str(e)
+
+    all_ready = all(deps.values())
+    payload = {"status": "ready" if all_ready else "degraded", "dependencies": deps, "details": details}
+    if not all_ready:
+        return JSONResponse(status_code=503, content=payload)
+    return payload
 
 @app.get("/")
 async def root():
@@ -205,6 +252,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 # ── Dependência de autenticação ───────────────────────────────────────────
 def get_current_user(
+    request: Request,
     authorization: Annotated[Optional[str], Header()] = None,
 ) -> str:
     """Valida token Bearer. Lança 401 se inválido."""
@@ -213,7 +261,12 @@ def get_current_user(
     token = authorization.split(" ", 1)[1].strip()
     if not _db:
         raise HTTPException(status_code=503, detail="Banco de dados não inicializado")
-    username = _db.validate_token(token)
+    client_ip = request.client.host if request.client else None
+    username = _db.validate_token(
+        token,
+        user_agent=request.headers.get("user-agent"),
+        client_ip=client_ip,
+    )
     if not username:
         raise HTTPException(status_code=401, detail="Token inválido ou expirado")
     return username
@@ -243,11 +296,29 @@ class PeritoInput(BaseModel):
 
 # ── Autenticação ─────────────────────────────────────────────────────────
 @app.post("/api/login")
-async def login(body: LoginInput):
+async def login(body: LoginInput, request: Request):
     if not _db or not _db.check_login(body.username, body.password):
         raise HTTPException(status_code=401, detail="Credenciais incorretas")
-    token = _db.create_token(body.username)
+    client_ip = request.client.host if request.client else None
+    token = _db.create_token(
+        body.username,
+        user_agent=request.headers.get("user-agent"),
+        client_ip=client_ip,
+    )
     return {"status": "ok", "token": token}
+
+@app.post("/api/logout")
+async def logout(
+    authorization: Annotated[Optional[str], Header()] = None,
+    _user: AuthUser = None
+):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token de autenticação não fornecido")
+    if not _db:
+        raise HTTPException(status_code=503, detail="Banco de dados não inicializado")
+    token = authorization.split(" ", 1)[1].strip()
+    _db.revoke_token(token)
+    return {"status": "ok"}
 
 @app.get("/api/health")
 async def api_health(_user: AuthUser = None):

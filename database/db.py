@@ -4,6 +4,9 @@ database/db.py — PostGIS completo para o Radar Pericial
 # ── IMPORTS OBRIGATÓRIOS ─────────────────────────────────────────────
 import logging
 import os
+import hashlib
+import secrets
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 import geopandas as gpd
@@ -57,13 +60,14 @@ def get_engine():
 
 # ── CryptContext com fallback seguro ─────────────────────────────────
 def _get_pwd_context():
-    """Retorna CryptContext com import local + fallback"""
+    """Retorna CryptContext usando esquemas seguros."""
     try:
         from passlib.context import CryptContext
-        return CryptContext(schemes=["bcrypt"], deprecated="auto")
+        return CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
     except ImportError as e:
-        logger.warning(f"⚠️ passlib não disponível: {e}. Usando fallback SHA256.")
-        return None
+        raise RuntimeError(
+            "passlib é obrigatório para autenticação segura (bcrypt/argon2)."
+        ) from e
 
 _pwd_context_ref = _get_pwd_context()
 
@@ -98,12 +102,22 @@ class Database:
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             regiao_foco TEXT,
-            token TEXT,
-            token_expira TIMESTAMPTZ,
             criado_em TIMESTAMPTZ DEFAULT NOW()
         );
-        ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token TEXT;
-        ALTER TABLE usuarios ADD COLUMN IF NOT EXISTS token_expira TIMESTAMPTZ;
+
+        CREATE TABLE IF NOT EXISTS user_sessions (
+            id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            token_hash TEXT UNIQUE NOT NULL,
+            criado_em TIMESTAMPTZ DEFAULT NOW(),
+            expira_em TIMESTAMPTZ NOT NULL,
+            revogado_em TIMESTAMPTZ,
+            ultimo_uso_em TIMESTAMPTZ,
+            user_agent TEXT,
+            client_ip TEXT
+        );
+        CREATE INDEX IF NOT EXISTS idx_sessions_user ON user_sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_exp ON user_sessions(expira_em);
 
         CREATE TABLE IF NOT EXISTS municipios_mt (
             id SERIAL PRIMARY KEY,
@@ -200,6 +214,8 @@ class Database:
             criado_em TIMESTAMPTZ DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_mov_proc ON movimentacoes(processo_id);
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_mov_unique
+            ON movimentacoes(processo_id, data_movimentacao, descricao);
 
         CREATE TABLE IF NOT EXISTS publicacoes (
             id SERIAL PRIMARY KEY,
@@ -266,8 +282,7 @@ class Database:
         """
         with self.engine.connect() as conn:
             conn.execute(text(sql))
-            import hashlib
-            h = hashlib.sha256("admin".encode()).hexdigest()
+            h = _pwd_context_ref.hash(os.getenv("DEFAULT_ADMIN_PASSWORD", "admin"))
             conn.execute(text(
                 "INSERT INTO usuarios (username, password_hash) "
                 "VALUES ('admin', :h) ON CONFLICT (username) DO NOTHING"
@@ -276,9 +291,7 @@ class Database:
         logger.info("✅ Schema inicializado.")
 
     def check_login(self, username: str, password_raw: str) -> bool:
-        # Obtém pwd_context com fallback
-        pwd_ctx = _get_pwd_context()
-        
+        pwd_ctx = _pwd_context_ref
         with self.engine.connect() as conn:
             row = conn.execute(
                 text("SELECT id, password_hash FROM usuarios WHERE username=:u"),
@@ -286,52 +299,101 @@ class Database:
             ).fetchone()
             if not row:
                 return False
-            uid, stored = row[0], row[1]
-
-            # Tenta bcrypt primeiro
-            if stored.startswith("$2b$") or stored.startswith("$2a$"):
-                if pwd_ctx:
-                    return pwd_ctx.verify(password_raw, stored)
-                logger.warning("bcrypt hash mas passlib não disponível")
+            stored = row[1]
+            if not stored:
+                return False
+            try:
+                return bool(pwd_ctx.verify(password_raw, stored))
+            except Exception:
+                logger.warning("Hash de senha inválido para usuário '%s'.", username)
                 return False
 
-            # Fallback SHA256 legado
-            import hashlib
-            if hashlib.sha256(password_raw.encode()).hexdigest() == stored:
-                # Tenta upgrade para bcrypt
-                if pwd_ctx:
-                    new_hash = pwd_ctx.hash(password_raw)
-                    conn.execute(
-                        text("UPDATE usuarios SET password_hash=:h WHERE id=:id"),
-                        {"h": new_hash, "id": uid},
-                    )
-                    conn.commit()
-                    logger.info(f"🔐 Senha de '{username}' upgradada para bcrypt.")
-                return True
-            return False
-
-    def create_token(self, username: str) -> str:
-        import uuid
-        from datetime import datetime, timedelta
-        token = str(uuid.uuid4())
-        expira = datetime.utcnow() + timedelta(hours=24)
+    def create_token(
+        self,
+        username: str,
+        user_agent: Optional[str] = None,
+        client_ip: Optional[str] = None,
+        ttl_hours: int = 24,
+    ) -> str:
+        token = secrets.token_urlsafe(48)
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        expira = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
         with self.engine.connect() as conn:
+            user = conn.execute(
+                text("SELECT id FROM usuarios WHERE username=:u"),
+                {"u": username},
+            ).fetchone()
+            if not user:
+                raise ValueError("Usuário inexistente para criação de sessão.")
             conn.execute(
-                text("UPDATE usuarios SET token=:t, token_expira=:e WHERE username=:u"),
-                {"t": token, "e": expira, "u": username},
+                text("""
+                    INSERT INTO user_sessions
+                    (user_id, token_hash, expira_em, user_agent, client_ip, ultimo_uso_em)
+                    VALUES (:uid, :th, :exp, :ua, :ip, NOW())
+                """),
+                {
+                    "uid": user[0],
+                    "th": token_hash,
+                    "exp": expira,
+                    "ua": user_agent,
+                    "ip": client_ip,
+                },
             )
             conn.commit()
         return token
 
-    def validate_token(self, token: str) -> Optional[str]:
+    def validate_token(
+        self,
+        token: str,
+        user_agent: Optional[str] = None,
+        client_ip: Optional[str] = None,
+    ) -> Optional[str]:
         if not token:
             return None
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
         with self.engine.connect() as conn:
             row = conn.execute(
-                text("SELECT username FROM usuarios WHERE token=:t AND token_expira > NOW()"),
-                {"t": token},
+                text("""
+                    SELECT s.id, u.username
+                    FROM user_sessions s
+                    JOIN usuarios u ON u.id = s.user_id
+                    WHERE s.token_hash = :th
+                      AND s.revogado_em IS NULL
+                      AND s.expira_em > NOW()
+                    LIMIT 1
+                """),
+                {"th": token_hash},
             ).fetchone()
-            return row[0] if row else None
+            if not row:
+                return None
+            conn.execute(
+                text("""
+                    UPDATE user_sessions
+                    SET ultimo_uso_em = NOW(),
+                        user_agent = COALESCE(:ua, user_agent),
+                        client_ip = COALESCE(:ip, client_ip)
+                    WHERE id = :sid
+                """),
+                {"sid": row[0], "ua": user_agent, "ip": client_ip},
+            )
+            conn.commit()
+            return row[1]
+
+    def revoke_token(self, token: str) -> bool:
+        if not token:
+            return False
+        token_hash = hashlib.sha256(token.encode()).hexdigest()
+        with self.engine.connect() as conn:
+            res = conn.execute(
+                text("""
+                    UPDATE user_sessions
+                    SET revogado_em = NOW()
+                    WHERE token_hash = :th AND revogado_em IS NULL
+                """),
+                {"th": token_hash},
+            )
+            conn.commit()
+            return res.rowcount > 0
 
     def save_geodataframe(self, gdf, table: str, if_exists: str = "append"):
         if gdf is None or (hasattr(gdf, "empty") and gdf.empty):
@@ -583,31 +645,40 @@ class Database:
         )
 
     def stats(self, regiao: Optional[str] = None) -> dict:
-        mun_f = desap_f = port_f = assent_f = proc_f = ""
-        sc_f = "WHERE faixa_probabilidade="
+        params = {"regiao": regiao} if regiao else {}
+        mun_f = (
+            "WHERE municipio IN (SELECT nome FROM municipios_mt WHERE regiao_imea = :regiao)"
+            if regiao else ""
+        )
+        desap_f = (
+            "WHERE desapropriacao_flag=TRUE AND municipio IN (SELECT nome FROM municipios_mt WHERE regiao_imea = :regiao)"
+            if regiao else ""
+        )
+        proc_f = "WHERE regiao_imea = :regiao" if regiao else ""
         if regiao:
-            mun_f = f"WHERE municipio IN (SELECT nome FROM municipios_mt WHERE regiao_imea = '{regiao}')"
-            desap_f = f"WHERE desapropriacao_flag=TRUE AND municipio IN (SELECT nome FROM municipios_mt WHERE regiao_imea = '{regiao}')"
-            port_f = f"WHERE municipio IN (SELECT nome FROM municipios_mt WHERE regiao_imea = '{regiao}')"
-            assent_f = f"WHERE municipio IN (SELECT nome FROM municipios_mt WHERE regiao_imea = '{regiao}')"
-            proc_f = f"WHERE regiao_imea = '{regiao}'"
-            sc_f = f"JOIN processos p ON score_pericial.processo_id = p.id WHERE p.regiao_imea = '{regiao}' AND faixa_probabilidade="
+            score_from = (
+                "FROM score_pericial s JOIN processos p ON s.processo_id = p.id "
+                "WHERE p.regiao_imea = :regiao AND s.faixa_probabilidade = :faixa"
+            )
+        else:
+            score_from = "FROM score_pericial s WHERE s.faixa_probabilidade = :faixa"
+
         qs = {
-            "total_parcelas": f"SELECT COUNT(*) FROM parcelas_sigef {mun_f}",
-            "total_desapropriadas": f"SELECT COUNT(*) FROM parcelas_sigef {desap_f}",
-            "area_total_ha": f"SELECT COALESCE(SUM(area_ha),0) FROM desapropriacao_ativa {mun_f}",
-            "total_portarias": f"SELECT COUNT(*) FROM portarias_diario_oficial {port_f}",
-            "total_assentamentos": f"SELECT COUNT(*) FROM assentamentos_incra {assent_f}",
-            "total_alertas_deter": "SELECT COUNT(*) FROM inpe_deter",
-            "total_processos": f"SELECT COUNT(*) FROM processos {proc_f}",
-            "processos_quentes": f"SELECT COUNT(*) FROM score_pericial {sc_f}'janela_quente'",
-            "processos_provaveis": f"SELECT COUNT(*) FROM score_pericial {sc_f}'provavel'",
-            "ultima_coleta": "SELECT MAX(coletado_em) FROM portarias_diario_oficial",
+            "total_parcelas": ("SELECT COUNT(*) FROM parcelas_sigef " + mun_f, params),
+            "total_desapropriadas": ("SELECT COUNT(*) FROM parcelas_sigef " + desap_f, params),
+            "area_total_ha": ("SELECT COALESCE(SUM(area_ha),0) FROM desapropriacao_ativa " + mun_f, params),
+            "total_portarias": ("SELECT COUNT(*) FROM portarias_diario_oficial " + mun_f, params),
+            "total_assentamentos": ("SELECT COUNT(*) FROM assentamentos_incra " + mun_f, params),
+            "total_alertas_deter": ("SELECT COUNT(*) FROM inpe_deter", {}),
+            "total_processos": ("SELECT COUNT(*) FROM processos " + proc_f, params),
+            "processos_quentes": ("SELECT COUNT(*) " + score_from, {**params, "faixa": "janela_quente"}),
+            "processos_provaveis": ("SELECT COUNT(*) " + score_from, {**params, "faixa": "provavel"}),
+            "ultima_coleta": ("SELECT MAX(coletado_em) FROM portarias_diario_oficial", {}),
         }
         result = {}
-        for k, s in qs.items():
+        for k, (sql, query_params) in qs.items():
             try:
-                result[k] = self.query(s).iloc[0, 0]
+                result[k] = self.query(sql, query_params).iloc[0, 0]
             except Exception:
                 result[k] = 0
         return result

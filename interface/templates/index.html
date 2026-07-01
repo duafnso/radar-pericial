@@ -283,6 +283,9 @@ input[type=checkbox]{accent-color:var(--field);cursor:pointer}
     <a onclick="nav('score')">Calculadora Pericial</a>
     <a onclick="nav('peritos')">Corpo Pericial</a>
     <a onclick="nav('alertas')">Central de Alertas</a>
+    <a onclick="nav('coletas')">Operacao</a>
+    <a onclick="nav('usuarios')">Usuarios</a>
+    <a onclick="nav('auditoria')">Auditoria</a>
   </nav>
   <div class="topbar-right">
     <select id="global-regiao" class="form-select" style="background:var(--ink2);color:#fff;border-color:var(--ink3);width:160px;font-size:11px;padding:4px 10px;height:26px;outline:none" onchange="changeGlobalRegion(this.value)">
@@ -317,6 +320,9 @@ input[type=checkbox]{accent-color:var(--field);cursor:pointer}
     <div class="sidebar-section">Ferramentas</div>
     <div class="nav-item" onclick="nav('score')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="square"/></svg>Calculadora Pericial</div>
     <div class="nav-item" onclick="nav('alertas')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 2a4 4 0 014 4v3l1 2H3l1-2V6a4 4 0 014-4zM6.5 13a1.5 1.5 0 003 0" stroke="currentColor" stroke-width="1.2"/></svg>Central de Alertas</div>
+    <div class="nav-item" onclick="nav('coletas')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v3H3zM3 10h10v3H3zM5 6v4M11 6v4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>Operacao de Coletas</div>
+    <div class="nav-item" onclick="nav('usuarios')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.8 13c.4-2.7 2-4.4 4.2-4.4s3.8 1.7 4.2 4.4M11 5h4M13 3v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="square"/></svg>Usuarios</div>
+    <div class="nav-item" onclick="nav('auditoria')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 2h10v12H3zM5 5h6M5 8h6M5 11h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="square" stroke-linejoin="round"/></svg>Auditoria</div>
     <div class="nav-item" onclick="nav('peritos')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 14c0-3.31 2.69-6 6-6s6 2.69 6 6" stroke="currentColor" stroke-width="1.2"/></svg>Corpo Pericial</div>
     <div class="sidebar-footer" id="sidebar-footer">Mato Grosso · v2.0<br>Carregando...</div>
   </aside>
@@ -727,6 +733,191 @@ input[type=checkbox]{accent-color:var(--field);cursor:pointer}
 </div>
 </div>
 </div>
+
+<div class="screen" id="screen-coletas">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-section">Status</div>
+    <div class="filter-group">
+      <div class="channel-row"><div><div class="channel-name">Geo</div><div class="channel-detail">A cada 12 horas</div></div><div class="status-active">Beat</div></div>
+      <div class="channel-row"><div><div class="channel-name">Judicial</div><div class="channel-detail">Diario 06:00</div></div><div class="status-active">Beat</div></div>
+      <div class="channel-row"><div><div class="channel-name">Admin</div><div class="channel-detail">Diario 07:00</div></div><div class="status-active">Beat</div></div>
+      <div class="channel-row"><div><div class="channel-name">Score</div><div class="channel-detail">Diario 08:00</div></div><div class="status-active">Beat</div></div>
+    </div>
+    <div class="sidebar-section">Leitura</div>
+    <div class="filter-group">
+      <label class="filter-cb"><input type="checkbox" checked disabled> Execucoes recentes</label>
+      <label class="filter-cb"><input type="checkbox" checked disabled> Falhas resumidas</label>
+      <label class="filter-cb"><input type="checkbox" checked disabled> Duracao e volume</label>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header flex-between">
+      <div>
+        <div class="page-title">Operacao de Coletas</div>
+        <div class="page-subtitle" id="coletas-subtitle">Carregando...</div>
+      </div>
+      <button class="btn btn-ghost" onclick="loadColetas()">Atualizar</button>
+    </div>
+    <div class="page-body">
+      <div class="card mb-16">
+        <div class="card-header">
+          <div class="card-title">Disparo manual</div>
+          <span style="font-family:var(--fm);font-size:9px;color:var(--ink4)">Restrito ao usuario admin</span>
+        </div>
+        <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn-secondary" onclick="runColeta('geo')">Executar Geo</button>
+          <button class="btn btn-secondary" onclick="runColeta('judicial')">Executar Judicial</button>
+          <button class="btn btn-secondary" onclick="runColeta('admin')">Executar Admin</button>
+          <button class="btn btn-secondary" onclick="runColeta('score')">Recalcular Score</button>
+        </div>
+      </div>
+      <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="metric-cell"><div class="metric-label">Ultima Execucao</div><div class="metric-val" id="c-ultima">--</div><div class="metric-delta d-neu" id="c-ultima-fonte">Fonte</div></div>
+        <div class="metric-cell"><div class="metric-label">Sucesso</div><div class="metric-val" id="c-sucesso">0</div><div class="metric-delta d-up">Recentes</div></div>
+        <div class="metric-cell"><div class="metric-label">Falhas</div><div class="metric-val" id="c-falhas">0</div><div class="metric-delta d-down">Recentes</div></div>
+        <div class="metric-cell"><div class="metric-label">Registros Salvos</div><div class="metric-val" id="c-salvos">0</div><div class="metric-delta d-neu">Ultimas execucoes</div></div>
+      </div>
+      <div class="section-label mb-8">Historico operacional</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Fonte</th>
+            <th>Tarefa</th>
+            <th>Status</th>
+            <th>Inicio</th>
+            <th>Duracao</th>
+            <th>Coletados</th>
+            <th>Salvos</th>
+            <th>Erro</th>
+          </tr>
+        </thead>
+        <tbody id="coletas-table">
+          <tr><td colspan="8"><div class="loading">Carregando...</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+</div>
+
+<div class="screen" id="screen-usuarios">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-section">Permissoes</div>
+    <div class="filter-group">
+      <div class="channel-row"><div><div class="channel-name">admin</div><div class="channel-detail">Gestao completa</div></div></div>
+      <div class="channel-row"><div><div class="channel-name">operator</div><div class="channel-detail">Operacao futura</div></div></div>
+      <div class="channel-row"><div><div class="channel-name">user</div><div class="channel-detail">Uso padrao</div></div></div>
+      <div class="channel-row"><div><div class="channel-name">viewer</div><div class="channel-detail">Leitura futura</div></div></div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header flex-between">
+      <div>
+        <div class="page-title">Usuarios e Permissoes</div>
+        <div class="page-subtitle" id="usuarios-subtitle">Carregando...</div>
+      </div>
+      <button class="btn btn-ghost" onclick="loadUsuarios()">Atualizar</button>
+    </div>
+    <div class="page-body">
+      <div class="card mb-16">
+        <div class="card-header">
+          <div class="card-title">Criar usuario</div>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            <div class="col">
+              <label class="form-label">Username</label>
+              <input class="form-input" id="u-username" placeholder="ex: operador">
+            </div>
+            <div class="col">
+              <label class="form-label">Senha inicial</label>
+              <input class="form-input" id="u-password" type="password" placeholder="minimo 8 caracteres">
+            </div>
+            <div class="col">
+              <label class="form-label">Role</label>
+              <select class="form-select" id="u-role">
+                <option value="user">user</option>
+                <option value="operator">operator</option>
+                <option value="viewer">viewer</option>
+                <option value="admin">admin</option>
+              </select>
+            </div>
+            <div class="col">
+              <label class="form-label">Regiao foco</label>
+              <input class="form-input" id="u-regiao" placeholder="Opcional">
+            </div>
+          </div>
+          <div style="margin-top:12px">
+            <button class="btn btn-primary" onclick="criarUsuario()">Criar usuario</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-label mb-8">Usuarios cadastrados</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Status</th>
+            <th>Regiao</th>
+            <th>Criado em</th>
+            <th>Acoes</th>
+          </tr>
+        </thead>
+        <tbody id="usuarios-table">
+          <tr><td colspan="7"><div class="loading">Carregando...</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+</div>
+
+<div class="screen" id="screen-auditoria">
+<div class="shell">
+  <aside class="sidebar">
+    <div class="sidebar-section">Eventos auditados</div>
+    <div class="filter-group">
+      <div class="channel-row"><div><div class="channel-name">login_success</div><div class="channel-detail">Entradas aceitas</div></div></div>
+      <div class="channel-row"><div><div class="channel-name">login_failed</div><div class="channel-detail">Tentativas negadas</div></div></div>
+      <div class="channel-row"><div><div class="channel-name">usuario_*</div><div class="channel-detail">Gestao de usuarios</div></div></div>
+      <div class="channel-row"><div><div class="channel-name">coleta_manual</div><div class="channel-detail">Disparos administrativos</div></div></div>
+    </div>
+  </aside>
+  <main class="main">
+    <div class="page-header flex-between">
+      <div>
+        <div class="page-title">Auditoria Administrativa</div>
+        <div class="page-subtitle" id="auditoria-subtitle">Carregando...</div>
+      </div>
+      <button class="btn btn-ghost" onclick="loadAuditoria()">Atualizar</button>
+    </div>
+    <div class="page-body">
+      <div class="section-label mb-8">Eventos recentes</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Ator</th>
+            <th>Acao</th>
+            <th>Entidade</th>
+            <th>ID</th>
+            <th>IP</th>
+            <th>Detalhes</th>
+          </tr>
+        </thead>
+        <tbody id="auditoria-table">
+          <tr><td colspan="7"><div class="loading">Carregando...</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</div>
+</div>
 <!-- FIM APP CONTAINER -->
 
 <!-- MODAL — Cadastrar Perito -->
@@ -879,6 +1070,15 @@ const faixaLabel = f => ({
   observacao:'Observação', frio:'Frio'
 }[f] || (f || '—'));
 
+const escapeHtml = v => String(v ?? '').replace(/[&<>"']/g, ch => ({
+  '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;'
+}[ch]));
+
+const shortDate = v => {
+  if (!v) return '--';
+  return String(v).replace('T', ' ').slice(0, 19);
+};
+
 const scoreClass = s => {
   const n = parseInt(s) || 0;
   if (n >= 75) return 'sc-critical';
@@ -923,7 +1123,7 @@ function nav(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
 
   document.getElementById('screen-' + id)?.classList.add('active');
-  const SCREENS = ['dashboard','mapa','processos','administrativo','score','peritos','alertas'];
+  const SCREENS = ['dashboard','mapa','processos','administrativo','score','peritos','alertas','coletas','usuarios','auditoria'];
   const idx = SCREENS.indexOf(id);
   if (idx >= 0) document.querySelectorAll('.topbar-nav a')[idx]?.classList.add('active');
 
@@ -950,6 +1150,9 @@ function loadScreen(id) {
     case 'administrativo': loadAdministrativo(); break;
     case 'alertas':        loadAlertas(); break;
     case 'peritos':        loadPeritos(); break;
+    case 'coletas':        loadColetas(); break;
+    case 'usuarios':       loadUsuarios(); break;
+    case 'auditoria':      loadAuditoria(); break;
   }
 }
 
@@ -996,6 +1199,22 @@ async function apiPost(path, body) {
 }
 
 // ═══════════════════════════════════════════════════════════
+async function apiPatch(path, body) {
+  try {
+    const r = await fetch(path, {
+      method: 'PATCH',
+      headers: _authHeaders({'Content-Type':'application/json'}),
+      body: JSON.stringify(body || {})
+    });
+    if (r.status === 401) { doLogout(); return null; }
+    if (!r.ok) throw new Error(r.status);
+    return await r.json();
+  } catch(e) {
+    console.warn('API PATCH', path, e.message);
+    return null;
+  }
+}
+
 // DASHBOARD
 // ═══════════════════════════════════════════════════════════
 async function loadDashboard() {
@@ -1767,6 +1986,198 @@ async function loadAlertas() {
 }
 
 // ═══════════════════════════════════════════════════════════
+async function loadUsuarios() {
+  const tbody = document.getElementById('usuarios-table');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7"><div class="loading">Carregando...</div></td></tr>';
+
+  const data = await apiGet('/api/admin/usuarios');
+  const items = data?.items || [];
+  document.getElementById('usuarios-subtitle').textContent =
+    `${items.length} usuarios cadastrados`;
+
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>Nenhum usuario encontrado.</p></div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = items.map(u => `
+    <tr>
+      <td class="td-mono">${u.id}</td>
+      <td class="td-primary">${escapeHtml(u.username)}</td>
+      <td>
+        <select class="form-select" style="width:120px" onchange="alterarRoleUsuario(${u.id}, this.value)">
+          ${['admin','operator','user','viewer'].map(r => `<option value="${r}" ${u.role===r?'selected':''}>${r}</option>`).join('')}
+        </select>
+      </td>
+      <td><span class="score-tag ${u.ativo ? 'sc-high' : 'sc-low'}">${u.ativo ? 'ativo' : 'inativo'}</span></td>
+      <td class="td-mono">${escapeHtml(u.regiao_foco || '--')}</td>
+      <td class="td-mono">${escapeHtml(shortDate(u.criado_em))}</td>
+      <td>
+        <div style="display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn btn-ghost" onclick="toggleUsuarioAtivo(${u.id}, ${u.ativo ? 'false' : 'true'})">${u.ativo ? 'Desativar' : 'Ativar'}</button>
+          <button class="btn btn-ghost" onclick="redefinirSenhaUsuario(${u.id}, ${JSON.stringify(u.username || '').replace(/"/g,'&quot;')})">Senha</button>
+        </div>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function loadAuditoria() {
+  const tbody = document.getElementById('auditoria-table');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="7"><div class="loading">Carregando...</div></td></tr>';
+
+  const data = await apiGet('/api/admin/auditoria?limit=100');
+  const items = data?.items || [];
+  document.getElementById('auditoria-subtitle').textContent =
+    `${items.length} eventos recentes`;
+
+  if (!items.length) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>Nenhum evento auditado.</p></div></td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = items.map(ev => {
+    const detalhes = ev.detalhes
+      ? escapeHtml(typeof ev.detalhes === 'string' ? ev.detalhes : JSON.stringify(ev.detalhes))
+      : '<span style="color:var(--ink4)">--</span>';
+    return `
+      <tr>
+        <td class="td-mono">${escapeHtml(shortDate(ev.criado_em))}</td>
+        <td class="td-primary">${escapeHtml(ev.ator_username || '--')}</td>
+        <td><span class="score-tag sc-medium">${escapeHtml(ev.acao || '--')}</span></td>
+        <td>${escapeHtml(ev.entidade || '--')}</td>
+        <td class="td-mono">${escapeHtml(ev.entidade_id || '--')}</td>
+        <td class="td-mono">${escapeHtml(ev.ip || '--')}</td>
+        <td style="max-width:260px;white-space:normal">${detalhes}</td>
+      </tr>`;
+  }).join('');
+}
+
+async function criarUsuario() {
+  const body = {
+    username: document.getElementById('u-username')?.value?.trim() || '',
+    password: document.getElementById('u-password')?.value || '',
+    role: document.getElementById('u-role')?.value || 'user',
+    regiao_foco: document.getElementById('u-regiao')?.value?.trim() || null,
+  };
+  if (body.username.length < 3 || body.password.length < 8) {
+    showToast('Informe username e senha com ao menos 8 caracteres.');
+    return;
+  }
+  const result = await apiPost('/api/admin/usuarios', body);
+  if (result?.status === 'created') {
+    showToast('Usuario criado.');
+    ['u-username','u-password','u-regiao'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+    loadUsuarios();
+  } else {
+    showToast('Nao foi possivel criar usuario. Verifique permissao ou duplicidade.');
+  }
+}
+
+async function alterarRoleUsuario(id, role) {
+  const result = await apiPatch(`/api/admin/usuarios/${id}/role`, {role});
+  if (result?.status === 'ok') {
+    showToast('Role atualizada.');
+  } else {
+    showToast('Nao foi possivel atualizar role.');
+    loadUsuarios();
+  }
+}
+
+async function toggleUsuarioAtivo(id, ativo) {
+  const result = await apiPatch(`/api/admin/usuarios/${id}/ativo`, {ativo});
+  if (result?.status === 'ok') {
+    showToast('Status atualizado.');
+    loadUsuarios();
+  } else {
+    showToast('Nao foi possivel atualizar status.');
+  }
+}
+
+async function redefinirSenhaUsuario(id, username) {
+  const password = window.prompt(`Nova senha para ${username}:`);
+  if (!password) return;
+  if (password.length < 8) {
+    showToast('Senha deve ter ao menos 8 caracteres.');
+    return;
+  }
+  const result = await apiPatch(`/api/admin/usuarios/${id}/senha`, {password});
+  if (result?.status === 'ok') {
+    showToast('Senha redefinida. Sessoes ativas foram revogadas.');
+  } else {
+    showToast('Nao foi possivel redefinir senha.');
+  }
+}
+
+async function loadColetas() {
+  const tbody = document.getElementById('coletas-table');
+  if (!tbody) return;
+  tbody.innerHTML = '<tr><td colspan="8"><div class="loading">Carregando...</div></td></tr>';
+
+  const data = await apiGet('/api/coletas/status?limit=50');
+  const items = data?.items || [];
+
+  document.getElementById('coletas-subtitle').textContent =
+    `${items.length} execucoes recentes registradas`;
+
+  const success = items.filter(i => i.status === 'success').length;
+  const failed = items.filter(i => i.status === 'failed').length;
+  const saved = items.reduce((acc, i) => acc + (parseInt(i.registros_salvos) || 0), 0);
+  const latest = items[0] || null;
+
+  document.getElementById('c-sucesso').textContent = success;
+  document.getElementById('c-falhas').textContent = failed;
+  document.getElementById('c-salvos').textContent = fmt(saved);
+  document.getElementById('c-ultima').textContent = latest ? shortDate(latest.iniciado_em).slice(11, 16) : '--';
+  document.getElementById('c-ultima-fonte').textContent = latest ? (latest.fonte || 'Fonte') : 'Fonte';
+
+  if (!items.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="8">
+          <div class="empty-state">
+            <p>Nenhuma execucao registrada.</p>
+            <p style="margin-top:6px">As proximas coletas automaticas aparecerao aqui.</p>
+          </div>
+        </td>
+      </tr>`;
+    return;
+  }
+
+  tbody.innerHTML = items.map(item => {
+    const status = item.status || 'running';
+    const statusCls = status === 'success' ? 'sc-high' : status === 'failed' ? 'sc-critical' : 'sc-low';
+    const erro = item.erro ? escapeHtml(String(item.erro).slice(0, 120)) : '<span style="color:var(--ink4)">--</span>';
+    return `
+      <tr>
+        <td class="td-primary">${escapeHtml(item.fonte || '--')}</td>
+        <td class="td-mono">${escapeHtml(item.tarefa || '--')}</td>
+        <td><span class="score-tag ${statusCls}">${escapeHtml(status)}</span></td>
+        <td class="td-mono">${escapeHtml(shortDate(item.iniciado_em))}</td>
+        <td class="td-mono">${item.duracao_segundos ? fmt(item.duracao_segundos, 1) + 's' : '--'}</td>
+        <td>${fmt(item.registros_coletados)}</td>
+        <td>${fmt(item.registros_salvos)}</td>
+        <td style="max-width:220px">${erro}</td>
+      </tr>`;
+  }).join('');
+}
+
+async function runColeta(tipo) {
+  const labels = {geo:'Geo', judicial:'Judicial', admin:'Admin', score:'Score'};
+  const ok = window.confirm(`Enfileirar coleta ${labels[tipo] || tipo} agora?`);
+  if (!ok) return;
+
+  const result = await apiPost(`/api/coletas/${tipo}/executar`, {});
+  if (result?.status === 'queued') {
+    showToast(`Coleta ${labels[tipo] || tipo} enfileirada.`);
+    setTimeout(loadColetas, 800);
+  } else {
+    showToast('Nao foi possivel enfileirar a coleta. Verifique permissao de admin.');
+  }
+}
+
 // INIT
 // ═══════════════════════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {

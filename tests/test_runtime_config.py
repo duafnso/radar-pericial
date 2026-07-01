@@ -105,3 +105,20 @@ def test_login_throttle_clears_failures(monkeypatch):
     main_module._clear_login_failures(key)
 
     assert main_module._assert_login_allowed(request, "admin") == key
+
+
+def test_admin_dependency_accepts_admin_role():
+    import api.main as main_module
+
+    user = {"id": 1, "username": "admin", "role": "admin"}
+
+    assert main_module.get_current_admin(user) == user
+
+
+def test_admin_dependency_rejects_non_admin_role():
+    import api.main as main_module
+
+    with pytest.raises(main_module.HTTPException) as exc:
+        main_module.get_current_admin({"id": 2, "username": "user", "role": "user"})
+
+    assert exc.value.status_code == 403

@@ -135,9 +135,18 @@ class Database:
             id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            ativo BOOLEAN NOT NULL DEFAULT TRUE,
             regiao_foco TEXT,
             criado_em TIMESTAMPTZ DEFAULT NOW()
         );
+        ALTER TABLE usuarios
+            ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'user';
+        ALTER TABLE usuarios
+            ADD COLUMN IF NOT EXISTS ativo BOOLEAN NOT NULL DEFAULT TRUE;
+        CREATE INDEX IF NOT EXISTS idx_usuarios_role ON usuarios(role);
+        CREATE INDEX IF NOT EXISTS idx_usuarios_ativo ON usuarios(ativo);
+        UPDATE usuarios SET role = 'admin' WHERE username = 'admin';
 
         CREATE TABLE IF NOT EXISTS user_sessions (
             id SERIAL PRIMARY KEY,
@@ -331,6 +340,25 @@ class Database:
             ON execucoes_coleta(fonte, iniciado_em DESC);
         CREATE INDEX IF NOT EXISTS idx_exec_coleta_status
             ON execucoes_coleta(status, iniciado_em DESC);
+
+        CREATE TABLE IF NOT EXISTS auditoria_eventos (
+            id SERIAL PRIMARY KEY,
+            ator_user_id INT REFERENCES usuarios(id) ON DELETE SET NULL,
+            ator_username TEXT,
+            acao TEXT NOT NULL,
+            entidade TEXT,
+            entidade_id TEXT,
+            detalhes JSONB,
+            ip TEXT,
+            user_agent TEXT,
+            criado_em TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_auditoria_eventos_criado
+            ON auditoria_eventos(criado_em DESC);
+        CREATE INDEX IF NOT EXISTS idx_auditoria_eventos_ator
+            ON auditoria_eventos(ator_user_id, criado_em DESC);
+        CREATE INDEX IF NOT EXISTS idx_auditoria_eventos_acao
+            ON auditoria_eventos(acao, criado_em DESC);
         """
         with self.engine.connect() as conn:
             conn.execute(text(sql))
@@ -338,9 +366,10 @@ class Database:
             if default_admin_password:
                 h = _pwd_context_ref.hash(default_admin_password)
                 conn.execute(text(
-                    "INSERT INTO usuarios (username, password_hash) "
-                    "VALUES ('admin', :h) "
-                    "ON CONFLICT (username) DO UPDATE SET password_hash = EXCLUDED.password_hash"
+                    "INSERT INTO usuarios (username, password_hash, ativo) "
+                    "VALUES ('admin', :h, TRUE) "
+                    "ON CONFLICT (username) DO UPDATE "
+                    "SET password_hash = EXCLUDED.password_hash, role = 'admin', ativo = TRUE"
                 ), {"h": h})
             else:
                 logger.warning("DEFAULT_ADMIN_PASSWORD ausente; usuário admin padrão não foi criado.")
@@ -351,7 +380,7 @@ class Database:
         pwd_ctx = _pwd_context_ref
         with self.engine.connect() as conn:
             row = conn.execute(
-                text("SELECT id, password_hash FROM usuarios WHERE username=:u"),
+                text("SELECT id, password_hash FROM usuarios WHERE username=:u AND ativo = TRUE"),
                 {"u": username},
             ).fetchone()
             if not row:
@@ -377,7 +406,7 @@ class Database:
         expira = datetime.now(timezone.utc) + timedelta(hours=ttl_hours)
         with self.engine.connect() as conn:
             user = conn.execute(
-                text("SELECT id FROM usuarios WHERE username=:u"),
+                text("SELECT id FROM usuarios WHERE username=:u AND ativo = TRUE"),
                 {"u": username},
             ).fetchone()
             if not user:
@@ -405,18 +434,28 @@ class Database:
         user_agent: Optional[str] = None,
         client_ip: Optional[str] = None,
     ) -> Optional[str]:
+        user = self.validate_token_user(token, user_agent=user_agent, client_ip=client_ip)
+        return user["username"] if user else None
+
+    def validate_token_user(
+        self,
+        token: str,
+        user_agent: Optional[str] = None,
+        client_ip: Optional[str] = None,
+    ) -> Optional[dict]:
         if not token:
             return None
         token_hash = _hash_session_token(token)
         with self.engine.connect() as conn:
             row = conn.execute(
                 text("""
-                    SELECT s.id, u.username
+                    SELECT s.id, u.id AS user_id, u.username, COALESCE(u.role, 'user') AS role
                     FROM user_sessions s
                     JOIN usuarios u ON u.id = s.user_id
                     WHERE s.token_hash = :th
                       AND s.revogado_em IS NULL
                       AND s.expira_em > NOW()
+                      AND u.ativo = TRUE
                     LIMIT 1
                 """),
                 {"th": token_hash},
@@ -434,7 +473,7 @@ class Database:
                 {"sid": row[0], "ua": user_agent, "ip": client_ip},
             )
             conn.commit()
-            return row[1]
+            return {"id": row[1], "username": row[2], "role": row[3]}
 
     def revoke_token(self, token: str) -> bool:
         if not token:
@@ -651,6 +690,143 @@ class Database:
             pid = r.fetchone()[0]
             conn.commit()
             return pid
+
+    def listar_usuarios(self) -> pd.DataFrame:
+        return self.query("""
+            SELECT id, username, role, ativo, regiao_foco,
+                   criado_em::text AS criado_em
+            FROM usuarios
+            ORDER BY id ASC
+        """)
+
+    def criar_usuario(
+        self,
+        username: str,
+        password_raw: str,
+        role: str = "user",
+        regiao_foco: Optional[str] = None,
+    ) -> int:
+        role = role if role in {"admin", "user", "viewer", "operator"} else "user"
+        password_hash = _pwd_context_ref.hash(password_raw)
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text("""
+                    INSERT INTO usuarios (username, password_hash, role, regiao_foco, ativo)
+                    VALUES (:username, :password_hash, :role, :regiao_foco, TRUE)
+                    ON CONFLICT (username) DO NOTHING
+                    RETURNING id
+                """),
+                {
+                    "username": username,
+                    "password_hash": password_hash,
+                    "role": role,
+                    "regiao_foco": regiao_foco,
+                },
+            ).fetchone()
+            if not row:
+                conn.rollback()
+                raise ValueError("Username ja existe.")
+            conn.commit()
+            return int(row[0])
+
+    def atualizar_role_usuario(self, user_id: int, role: str) -> bool:
+        if role not in {"admin", "user", "viewer", "operator"}:
+            raise ValueError("Role invalida.")
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text("UPDATE usuarios SET role=:role WHERE id=:id"),
+                {"id": user_id, "role": role},
+            )
+            conn.commit()
+            return result.rowcount > 0
+
+    def definir_usuario_ativo(self, user_id: int, ativo: bool) -> bool:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text("UPDATE usuarios SET ativo=:ativo WHERE id=:id"),
+                {"id": user_id, "ativo": ativo},
+            )
+            if result.rowcount:
+                conn.execute(
+                    text("""
+                        UPDATE user_sessions
+                        SET revogado_em = NOW()
+                        WHERE user_id = :id AND revogado_em IS NULL
+                    """),
+                    {"id": user_id},
+                )
+            conn.commit()
+            return result.rowcount > 0
+
+    def redefinir_senha_usuario(self, user_id: int, password_raw: str) -> bool:
+        password_hash = _pwd_context_ref.hash(password_raw)
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text("UPDATE usuarios SET password_hash=:password_hash WHERE id=:id"),
+                {"id": user_id, "password_hash": password_hash},
+            )
+            if result.rowcount:
+                conn.execute(
+                    text("""
+                        UPDATE user_sessions
+                        SET revogado_em = NOW()
+                        WHERE user_id = :id AND revogado_em IS NULL
+                    """),
+                    {"id": user_id},
+                )
+            conn.commit()
+            return result.rowcount > 0
+
+    def registrar_auditoria(
+        self,
+        acao: str,
+        ator: Optional[dict] = None,
+        entidade: Optional[str] = None,
+        entidade_id: Optional[str] = None,
+        detalhes: Optional[dict] = None,
+        ip: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> None:
+        ator = ator or {}
+        try:
+            with self.engine.connect() as conn:
+                conn.execute(
+                    text("""
+                        INSERT INTO auditoria_eventos (
+                            ator_user_id, ator_username, acao, entidade, entidade_id,
+                            detalhes, ip, user_agent
+                        )
+                        VALUES (
+                            :ator_user_id, :ator_username, :acao, :entidade, :entidade_id,
+                            CAST(:detalhes AS JSONB), :ip, :user_agent
+                        )
+                    """),
+                    {
+                        "ator_user_id": ator.get("id"),
+                        "ator_username": ator.get("username"),
+                        "acao": acao,
+                        "entidade": entidade,
+                        "entidade_id": str(entidade_id) if entidade_id is not None else None,
+                        "detalhes": json_dumps(detalhes or {}),
+                        "ip": ip,
+                        "user_agent": (user_agent or "")[:500] if user_agent else None,
+                    },
+                )
+                conn.commit()
+        except Exception as e:
+            logger.warning(f"Falha ao registrar auditoria {acao}: {e}")
+
+    def listar_auditoria(self, limit: int = 100) -> pd.DataFrame:
+        return self.query(
+            """
+            SELECT id, ator_user_id, ator_username, acao, entidade, entidade_id,
+                   detalhes, ip, criado_em::text AS criado_em
+            FROM auditoria_eventos
+            ORDER BY criado_em DESC
+            LIMIT :limit
+            """,
+            {"limit": limit},
+        )
 
     def iniciar_execucao_coleta(
         self,

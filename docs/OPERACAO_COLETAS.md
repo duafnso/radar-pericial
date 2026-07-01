@@ -65,6 +65,25 @@ Resposta:
 }
 ```
 
+## Disparo manual
+
+Endpoint protegido para usuarios com `role='admin'`:
+
+```http
+POST /api/coletas/{tipo}/executar
+Authorization: Bearer <token-admin>
+```
+
+Tipos aceitos:
+
+- `geo`
+- `judicial`
+- `admin`
+- `score`
+
+O endpoint apenas enfileira a tarefa no Celery. A execucao real acontece no
+worker e aparece posteriormente em `/api/coletas/status`.
+
 ## Proximo passo de produto
 
 O painel administrativo deve consumir `/api/coletas/status` para exibir:
@@ -76,4 +95,3 @@ O painel administrativo deve consumir `/api/coletas/status` para exibir:
 - quantidade salva;
 - erro resumido;
 - botao futuro para "executar agora".
-

@@ -342,7 +342,7 @@ app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 def get_current_user(
     request: Request,
     authorization: Annotated[Optional[str], Header()] = None,
-) -> str:
+) -> dict:
     """Valida token Bearer. Lança 401 se inválido."""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Token de autenticação não fornecido")
@@ -350,16 +350,47 @@ def get_current_user(
     if not _db:
         raise HTTPException(status_code=503, detail="Banco de dados não inicializado")
     client_ip = request.client.host if request.client else None
-    username = _db.validate_token(
+    user = _db.validate_token_user(
         token,
         user_agent=request.headers.get("user-agent"),
         client_ip=client_ip,
     )
-    if not username:
+    if not user:
         raise HTTPException(status_code=401, detail="Token inválido ou expirado")
-    return username
+    return user
 
-AuthUser = Annotated[str, Depends(get_current_user)]
+AuthUser = Annotated[dict, Depends(get_current_user)]
+
+
+def get_current_admin(user: AuthUser) -> dict:
+    if user.get("role") != "admin":
+        raise HTTPException(status_code=403, detail="Acesso restrito ao administrador")
+    return user
+
+
+AdminUser = Annotated[dict, Depends(get_current_admin)]
+
+
+def _audit_request(
+    request: Request,
+    acao: str,
+    ator: Optional[dict] = None,
+    entidade: Optional[str] = None,
+    entidade_id: Optional[str] = None,
+    detalhes: Optional[dict] = None,
+) -> None:
+    if not _db:
+        return
+    client_ip = request.client.host if request.client else None
+    _db.registrar_auditoria(
+        acao=acao,
+        ator=ator,
+        entidade=entidade,
+        entidade_id=entidade_id,
+        detalhes=detalhes,
+        ip=client_ip,
+        user_agent=request.headers.get("user-agent"),
+    )
 
 
 # ── Modelos Pydantic ──────────────────────────────────────────────────────
@@ -381,25 +412,56 @@ class PeritoInput(BaseModel):
     municipios_atuacao: str = ""
     regiao_imea: str = ""
 
+class UsuarioInput(BaseModel):
+    username: str
+    password: str
+    role: str = "user"
+    regiao_foco: Optional[str] = None
+
+class UsuarioRoleInput(BaseModel):
+    role: str
+
+class UsuarioAtivoInput(BaseModel):
+    ativo: bool
+
+class UsuarioSenhaInput(BaseModel):
+    password: str
+
 
 # ── Autenticação ─────────────────────────────────────────────────────────
 @app.post("/api/login")
 async def login(body: LoginInput, request: Request):
-    login_key = _assert_login_allowed(request, body.username)
-    if not _db or not _db.check_login(body.username, body.password):
+    username = body.username.strip().lower()
+    login_key = _assert_login_allowed(request, username)
+    if not _db or not _db.check_login(username, body.password):
         _record_login_failure(login_key)
+        _audit_request(
+            request,
+            "login_failed",
+            ator={"username": username},
+            entidade="usuario",
+            entidade_id=username,
+        )
         raise HTTPException(status_code=401, detail="Credenciais incorretas")
     client_ip = request.client.host if request.client else None
     token = _db.create_token(
-        body.username,
+        username,
         user_agent=request.headers.get("user-agent"),
         client_ip=client_ip,
     )
     _clear_login_failures(login_key)
+    _audit_request(
+        request,
+        "login_success",
+        ator={"username": username},
+        entidade="usuario",
+        entidade_id=username,
+    )
     return {"status": "ok", "token": token}
 
 @app.post("/api/logout")
 async def logout(
+    request: Request,
     _user: AuthUser,
     authorization: Annotated[Optional[str], Header()] = None,
 ):
@@ -409,12 +471,20 @@ async def logout(
         raise HTTPException(status_code=503, detail="Banco de dados não inicializado")
     token = authorization.split(" ", 1)[1].strip()
     _db.revoke_token(token)
+    _audit_request(request, "logout", ator=_user, entidade="usuario", entidade_id=_user.get("id"))
     return {"status": "ok"}
 
 @app.get("/api/health")
 async def api_health(_user: AuthUser):
     """Health check da API — requer autenticação"""
-    return {"status": "ok", "service": "Radar Pericial v2", "authenticated": True}
+    return {
+        "status": "ok",
+        "service": "Radar Pericial v2",
+        "authenticated": True,
+        "id": _user.get("id"),
+        "user": _user.get("username"),
+        "role": _user.get("role"),
+    }
 
 
 # ── Stats ────────────────────────────────────────────────────────────────
@@ -657,3 +727,181 @@ async def coletas_status(limit: int = Query(50, le=200), _user: AuthUser = None)
     except Exception as e:
         logger.error(f"coletas_status: {e}")
         raise HTTPException(status_code=500, detail="Erro ao consultar status das coletas")
+
+
+@app.post("/api/coletas/{tipo}/executar")
+async def executar_coleta(tipo: str, request: Request, _admin: AdminUser):
+    try:
+        from alerts.scheduler import task_admin, task_geo, task_judicial, task_score
+
+        tasks = {
+            "geo": lambda: task_geo.delay(),
+            "judicial": lambda: task_judicial.delay(dias_atras=1),
+            "admin": lambda: task_admin.delay(dias_atras=2),
+            "score": lambda: task_score.delay(),
+        }
+        if tipo not in tasks:
+            raise HTTPException(status_code=400, detail="Tipo de coleta inválido")
+        result = tasks[tipo]()
+        _audit_request(
+            request,
+            "coleta_manual_enfileirada",
+            ator=_admin,
+            entidade="coleta",
+            entidade_id=tipo,
+            detalhes={"task_id": result.id},
+        )
+        return {"status": "queued", "tipo": tipo, "task_id": result.id}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"executar_coleta {tipo}: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao enfileirar coleta")
+
+
+def _validate_role(role: str) -> str:
+    allowed = {"admin", "user", "viewer", "operator"}
+    if role not in allowed:
+        raise HTTPException(status_code=400, detail="Role invalida")
+    return role
+
+
+def _validate_password(password: str) -> None:
+    if len(password or "") < 8:
+        raise HTTPException(status_code=400, detail="Senha deve ter ao menos 8 caracteres")
+
+
+@app.get("/api/admin/usuarios")
+async def admin_listar_usuarios(_admin: AdminUser):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        df = _db.listar_usuarios()
+        return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin_listar_usuarios: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao listar usuarios")
+
+
+@app.post("/api/admin/usuarios")
+async def admin_criar_usuario(body: UsuarioInput, request: Request, _admin: AdminUser):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        username = body.username.strip().lower()
+        if len(username) < 3:
+            raise HTTPException(status_code=400, detail="Username deve ter ao menos 3 caracteres")
+        _validate_password(body.password)
+        role = _validate_role(body.role)
+        user_id = _db.criar_usuario(
+            username=username,
+            password_raw=body.password,
+            role=role,
+            regiao_foco=body.regiao_foco,
+        )
+        _audit_request(
+            request,
+            "usuario_criado",
+            ator=_admin,
+            entidade="usuario",
+            entidade_id=str(user_id),
+            detalhes={"username": username, "role": role, "regiao_foco": body.regiao_foco},
+        )
+        return {"status": "created", "id": user_id}
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except Exception as e:
+        logger.error(f"admin_criar_usuario: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao criar usuario")
+
+
+@app.patch("/api/admin/usuarios/{user_id}/role")
+async def admin_atualizar_role(user_id: int, body: UsuarioRoleInput, request: Request, _admin: AdminUser):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        role = _validate_role(body.role)
+        if user_id == _admin.get("id") and role != "admin":
+            raise HTTPException(status_code=400, detail="Admin nao pode remover o proprio papel")
+        if not _db.atualizar_role_usuario(user_id, role):
+            raise HTTPException(status_code=404, detail="Usuario nao encontrado")
+        _audit_request(
+            request,
+            "usuario_role_atualizada",
+            ator=_admin,
+            entidade="usuario",
+            entidade_id=str(user_id),
+            detalhes={"role": role},
+        )
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin_atualizar_role: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao atualizar role")
+
+
+@app.patch("/api/admin/usuarios/{user_id}/ativo")
+async def admin_definir_usuario_ativo(user_id: int, body: UsuarioAtivoInput, request: Request, _admin: AdminUser):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        if user_id == _admin.get("id") and not body.ativo:
+            raise HTTPException(status_code=400, detail="Admin nao pode desativar a propria conta")
+        if not _db.definir_usuario_ativo(user_id, body.ativo):
+            raise HTTPException(status_code=404, detail="Usuario nao encontrado")
+        _audit_request(
+            request,
+            "usuario_status_atualizado",
+            ator=_admin,
+            entidade="usuario",
+            entidade_id=str(user_id),
+            detalhes={"ativo": body.ativo},
+        )
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin_definir_usuario_ativo: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao atualizar usuario")
+
+
+@app.patch("/api/admin/usuarios/{user_id}/senha")
+async def admin_redefinir_senha(user_id: int, body: UsuarioSenhaInput, request: Request, _admin: AdminUser):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        _validate_password(body.password)
+        if not _db.redefinir_senha_usuario(user_id, body.password):
+            raise HTTPException(status_code=404, detail="Usuario nao encontrado")
+        _audit_request(
+            request,
+            "usuario_senha_redefinida",
+            ator=_admin,
+            entidade="usuario",
+            entidade_id=str(user_id),
+        )
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin_redefinir_senha: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao redefinir senha")
+
+
+@app.get("/api/admin/auditoria")
+async def admin_listar_auditoria(_admin: AdminUser, limit: int = Query(100, le=500)):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        df = _db.listar_auditoria(limit=limit)
+        return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"admin_listar_auditoria: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao listar auditoria")

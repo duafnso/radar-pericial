@@ -10,6 +10,7 @@ import sys
 import signal
 import asyncio
 import subprocess
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Optional
@@ -50,6 +51,7 @@ from intelligence.taxonomy import calcular_score, TAXONOMIA, REGIOES_IMEA
 
 # ── Instância global do banco ─────────────────────────────────────────────
 _db: Optional[Database] = None
+_LOGIN_FAILURES: dict[str, list[float]] = {}
 
 
 # ── Carregamento Automático de Dados Demo ──────────────────────────────────
@@ -126,20 +128,84 @@ async def lifespan(app: FastAPI):
 
 
 # ── Criação da aplicação FastAPI ──────────────────────────────────────────
+def _is_production() -> bool:
+    return os.getenv("APP_ENV", os.getenv("ENV", "development")).strip().lower() in {
+        "prod",
+        "production",
+    }
+
+
+def _env_enabled(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _parse_cors_origins() -> list[str]:
     raw = os.getenv("CORS_ALLOW_ORIGINS")
     if raw is None:
+        if _is_production():
+            raise RuntimeError("CORS_ALLOW_ORIGINS deve ser definido em produção.")
         return ["http://localhost:8000", "http://127.0.0.1:8000"]
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
+    if _is_production() and "*" in origins:
+        raise RuntimeError("CORS_ALLOW_ORIGINS não pode conter '*' em produção.")
     return origins
+
+
+api_docs_enabled = (not _is_production()) or _env_enabled("ENABLE_API_DOCS", False)
+
+
+def _login_limits() -> tuple[int, int]:
+    max_attempts = int(os.getenv("LOGIN_MAX_ATTEMPTS", "5"))
+    window_seconds = int(os.getenv("LOGIN_WINDOW_SECONDS", "300"))
+    return max_attempts, window_seconds
+
+
+def _login_key(request: Request, username: str) -> str:
+    client_ip = request.client.host if request.client else "unknown"
+    return f"{client_ip}:{username.strip().lower()}"
+
+
+def _prune_login_failures(key: str, now: float, window_seconds: int) -> list[float]:
+    failures = [
+        ts for ts in _LOGIN_FAILURES.get(key, [])
+        if now - ts <= window_seconds
+    ]
+    if failures:
+        _LOGIN_FAILURES[key] = failures
+    else:
+        _LOGIN_FAILURES.pop(key, None)
+    return failures
+
+
+def _assert_login_allowed(request: Request, username: str) -> str:
+    max_attempts, window_seconds = _login_limits()
+    key = _login_key(request, username)
+    failures = _prune_login_failures(key, time.monotonic(), window_seconds)
+    if len(failures) >= max_attempts:
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas tentativas de login. Tente novamente mais tarde.",
+        )
+    return key
+
+
+def _record_login_failure(key: str) -> None:
+    _LOGIN_FAILURES.setdefault(key, []).append(time.monotonic())
+
+
+def _clear_login_failures(key: str) -> None:
+    _LOGIN_FAILURES.pop(key, None)
 
 
 app = FastAPI(
     title="Radar Pericial",
     version="2.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url="/docs" if api_docs_enabled else None,
+    redoc_url="/redoc" if api_docs_enabled else None,
+    openapi_url="/openapi.json" if api_docs_enabled else None,
     lifespan=lifespan
 )
 
@@ -156,6 +222,21 @@ app.add_middleware(
 
 
 # ── Health Checks para Railway (SEM autenticação, respondem em <100ms) ───
+@app.middleware("http")
+async def security_headers(request, call_next):
+    response = await call_next(request)
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "X-Frame-Options": "DENY",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Permissions-Policy": "geolocation=(), microphone=(), camera=()",
+    }
+    for name, value in headers.items():
+        if name not in response.headers:
+            response.headers[name] = value
+    return response
+
+
 @app.get("/health")
 async def railway_health():
     """Health check mínimo para Railway — SEM query no banco"""
@@ -304,7 +385,9 @@ class PeritoInput(BaseModel):
 # ── Autenticação ─────────────────────────────────────────────────────────
 @app.post("/api/login")
 async def login(body: LoginInput, request: Request):
+    login_key = _assert_login_allowed(request, body.username)
     if not _db or not _db.check_login(body.username, body.password):
+        _record_login_failure(login_key)
         raise HTTPException(status_code=401, detail="Credenciais incorretas")
     client_ip = request.client.host if request.client else None
     token = _db.create_token(
@@ -312,6 +395,7 @@ async def login(body: LoginInput, request: Request):
         user_agent=request.headers.get("user-agent"),
         client_ip=client_ip,
     )
+    _clear_login_failures(login_key)
     return {"status": "ok", "token": token}
 
 @app.post("/api/logout")
@@ -559,3 +643,17 @@ async def alertas(limit: int = Query(40, le=200), _user: AuthUser = None):
     except Exception as e:
         logger.error(f"alertas: {e}")
         return {"total": 0, "items": []}
+
+
+@app.get("/api/coletas/status")
+async def coletas_status(limit: int = Query(50, le=200), _user: AuthUser = None):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco não inicializado")
+        df = _db.listar_execucoes_coleta(limit=limit)
+        return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"coletas_status: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao consultar status das coletas")

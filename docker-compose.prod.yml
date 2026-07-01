@@ -1,0 +1,85 @@
+x-app-env: &app-env
+  APP_ENV: production
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+  REDIS_URL: ${REDIS_URL:?REDIS_URL is required}
+  SECRET_KEY: ${SECRET_KEY:?SECRET_KEY is required}
+  SESSION_TOKEN_PEPPER: ${SESSION_TOKEN_PEPPER:?SESSION_TOKEN_PEPPER is required}
+  CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:?CORS_ALLOW_ORIGINS is required}
+  ENABLE_API_DOCS: ${ENABLE_API_DOCS:-false}
+  PYTHONPATH: /app
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  LOAD_DEMO_DATA: ${LOAD_DEMO_DATA:-false}
+
+x-source-env: &source-env
+  DATAJUD_API_KEY: ${DATAJUD_API_KEY:-}
+  ENABLE_SOURCE_DATAJUD: ${ENABLE_SOURCE_DATAJUD:-true}
+  ENABLE_SOURCE_DJE: ${ENABLE_SOURCE_DJE:-false}
+  ENABLE_SOURCE_DOU: ${ENABLE_SOURCE_DOU:-true}
+  ENABLE_SOURCE_IOMAT: ${ENABLE_SOURCE_IOMAT:-false}
+  ENABLE_SOURCE_DNIT: ${ENABLE_SOURCE_DNIT:-true}
+  ENABLE_SOURCE_SINFRA: ${ENABLE_SOURCE_SINFRA:-false}
+  ENABLE_SOURCE_IBGE_MUNICIPIOS: ${ENABLE_SOURCE_IBGE_MUNICIPIOS:-true}
+  ENABLE_SOURCE_IBGE_ESTADO: ${ENABLE_SOURCE_IBGE_ESTADO:-true}
+  ENABLE_SOURCE_IBGE_INFO: ${ENABLE_SOURCE_IBGE_INFO:-true}
+  ENABLE_SOURCE_SIGEF: ${ENABLE_SOURCE_SIGEF:-false}
+  ENABLE_SOURCE_ASSENTAMENTOS: ${ENABLE_SOURCE_ASSENTAMENTOS:-false}
+  ENABLE_SOURCE_PRODES: ${ENABLE_SOURCE_PRODES:-true}
+  ENABLE_SOURCE_DETER: ${ENABLE_SOURCE_DETER:-false}
+  ENABLE_SOURCE_CAR: ${ENABLE_SOURCE_CAR:-false}
+
+x-alert-env: &alert-env
+  TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+  TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+  WEBHOOK_ALERT_URL: ${WEBHOOK_ALERT_URL:-}
+
+x-app-build: &app-build
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  networks:
+    - radar_network
+
+services:
+  web:
+    <<: *app-build
+    environment:
+      <<: [*app-env, *source-env, *alert-env]
+    ports:
+      - "${WEB_PORT:-8000}:8000"
+    command: >
+      uvicorn api.main:app
+      --host 0.0.0.0
+      --port 8000
+      --workers ${WEB_WORKERS:-2}
+      --log-level ${LOG_LEVEL:-info}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  worker:
+    <<: *app-build
+    environment:
+      <<: [*app-env, *source-env, *alert-env]
+    command: >
+      celery -A alerts.scheduler worker
+      --loglevel=${LOG_LEVEL:-info}
+      --concurrency=${WORKER_CONCURRENCY:-2}
+      --time-limit=${WORKER_TIME_LIMIT:-3600}
+      --queues=geo,judicial,admin,default
+
+  beat:
+    <<: *app-build
+    environment:
+      <<: [*app-env, *source-env, *alert-env]
+    command: >
+      celery -A alerts.scheduler beat
+      --loglevel=${LOG_LEVEL:-info}
+      --scheduler celery.beat.PersistentScheduler
+
+networks:
+  radar_network:
+    driver: bridge

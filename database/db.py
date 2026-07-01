@@ -6,6 +6,7 @@ import logging
 import os
 import hashlib
 import hmac
+import json
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -16,6 +17,10 @@ from sqlalchemy import create_engine, text
 from urllib.parse import quote_plus
 
 logger = logging.getLogger(__name__)
+
+
+def json_dumps(value: dict) -> str:
+    return json.dumps(value, ensure_ascii=False, default=str)
 
 # ── DEBUG: confirmar carregamento ────────────────────────────────────
 logger.info("🔍 db.py está sendo carregado...")
@@ -71,7 +76,30 @@ def _get_pwd_context():
         ) from e
 
 _pwd_context_ref = _get_pwd_context()
-_SESSION_TOKEN_PEPPER = os.getenv("SESSION_TOKEN_PEPPER", os.getenv("SECRET_KEY", "dev-token-pepper"))
+
+
+def _is_production() -> bool:
+    return os.getenv("APP_ENV", os.getenv("ENV", "development")).strip().lower() in {
+        "prod",
+        "production",
+    }
+
+
+def _load_session_token_pepper() -> str:
+    pepper = os.getenv("SESSION_TOKEN_PEPPER") or os.getenv("SECRET_KEY")
+    if pepper:
+        return pepper
+    if _is_production():
+        raise RuntimeError(
+            "SESSION_TOKEN_PEPPER ou SECRET_KEY deve ser definido em produção."
+        )
+    logger.warning(
+        "SESSION_TOKEN_PEPPER/SECRET_KEY ausente; usando pepper de desenvolvimento."
+    )
+    return "dev-token-pepper"
+
+
+_SESSION_TOKEN_PEPPER = _load_session_token_pepper()
 
 
 def _hash_session_token(token: str) -> str:
@@ -285,6 +313,24 @@ class Database:
             coletado_em TIMESTAMPTZ DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_raw_proc ON data_lake_raw(processado);
+
+        CREATE TABLE IF NOT EXISTS execucoes_coleta (
+            id SERIAL PRIMARY KEY,
+            fonte TEXT NOT NULL,
+            tarefa TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'running',
+            parametros JSONB,
+            registros_coletados INT DEFAULT 0,
+            registros_salvos INT DEFAULT 0,
+            erro TEXT,
+            iniciado_em TIMESTAMPTZ DEFAULT NOW(),
+            finalizado_em TIMESTAMPTZ,
+            duracao_segundos NUMERIC
+        );
+        CREATE INDEX IF NOT EXISTS idx_exec_coleta_fonte
+            ON execucoes_coleta(fonte, iniciado_em DESC);
+        CREATE INDEX IF NOT EXISTS idx_exec_coleta_status
+            ON execucoes_coleta(status, iniciado_em DESC);
         """
         with self.engine.connect() as conn:
             conn.execute(text(sql))
@@ -605,6 +651,73 @@ class Database:
             pid = r.fetchone()[0]
             conn.commit()
             return pid
+
+    def iniciar_execucao_coleta(
+        self,
+        fonte: str,
+        tarefa: str,
+        parametros: Optional[dict] = None,
+    ) -> int:
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text("""
+                    INSERT INTO execucoes_coleta (fonte, tarefa, parametros)
+                    VALUES (:fonte, :tarefa, CAST(:parametros AS JSONB))
+                    RETURNING id
+                """),
+                {
+                    "fonte": fonte,
+                    "tarefa": tarefa,
+                    "parametros": json_dumps(parametros or {}),
+                },
+            ).fetchone()
+            conn.commit()
+            return int(row[0])
+
+    def finalizar_execucao_coleta(
+        self,
+        execucao_id: int,
+        status: str,
+        registros_coletados: int = 0,
+        registros_salvos: int = 0,
+        erro: Optional[str] = None,
+    ) -> None:
+        with self.engine.connect() as conn:
+            conn.execute(
+                text("""
+                    UPDATE execucoes_coleta
+                    SET status = :status,
+                        registros_coletados = :coletados,
+                        registros_salvos = :salvos,
+                        erro = :erro,
+                        finalizado_em = NOW(),
+                        duracao_segundos = EXTRACT(EPOCH FROM (NOW() - iniciado_em))
+                    WHERE id = :id
+                """),
+                {
+                    "id": execucao_id,
+                    "status": status,
+                    "coletados": registros_coletados,
+                    "salvos": registros_salvos,
+                    "erro": (erro or "")[:2000] if erro else None,
+                },
+            )
+            conn.commit()
+
+    def listar_execucoes_coleta(self, limit: int = 50) -> pd.DataFrame:
+        return self.query(
+            """
+            SELECT id, fonte, tarefa, status, parametros,
+                   registros_coletados, registros_salvos, erro,
+                   iniciado_em::text AS iniciado_em,
+                   finalizado_em::text AS finalizado_em,
+                   duracao_segundos
+            FROM execucoes_coleta
+            ORDER BY iniciado_em DESC
+            LIMIT :limit
+            """,
+            {"limit": limit},
+        )
 
     def query(self, sql: str, params: dict = None) -> pd.DataFrame:
         with self.engine.connect() as conn:

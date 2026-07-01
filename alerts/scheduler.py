@@ -57,8 +57,36 @@ app.conf.update(
 
 
 # ── Tarefa: coleta geoespacial ─────────────────────────────────────────
+def _safe_len(value) -> int:
+    try:
+        return len(value) if value is not None else 0
+    except Exception:
+        return 0
+
+
+def _count_records(payload) -> int:
+    if isinstance(payload, dict):
+        return sum(_safe_len(v) for v in payload.values())
+    return _safe_len(payload)
+
+
+def _mark_failed(db, execucao_id, exc: Exception) -> None:
+    if db is None or execucao_id is None:
+        return
+    try:
+        db.finalizar_execucao_coleta(
+            execucao_id,
+            status="failed",
+            erro=f"{type(exc).__name__}: {exc}",
+        )
+    except Exception as err:
+        logger.warning(f"Falha ao registrar erro de coleta: {err}")
+
+
 @app.task(bind=True, max_retries=2, default_retry_delay=600, queue="geo")
 def task_geo(self):
+    db = None
+    execucao_id = None
     try:
         from database.db import Database
         from collector.multi_source_collector import MultiSourceCollector
@@ -66,6 +94,7 @@ def task_geo(self):
         import geopandas as gpd
 
         db  = Database()
+        execucao_id = db.iniciar_execucao_coleta("geo", "task_geo")
         raw = MultiSourceCollector().run()
 
         # Fix: limpa municipios_mt ANTES de passá-los como referência no ETL.
@@ -88,20 +117,34 @@ def task_geo(self):
                     db.save_geodataframe(ativas, "desapropriacao_ativa")
 
         logger.info("task_geo concluída")
+        db.finalizar_execucao_coleta(
+            execucao_id,
+            status="success",
+            registros_coletados=_count_records(raw),
+            registros_salvos=_count_records(cleaned),
+        )
         return {"status": "ok", "task": "geo"}
     except Exception as e:
         logger.error(f"task_geo: {e}")
+        _mark_failed(db, execucao_id, e)
         raise self.retry(exc=e)
 
 
 # ── Tarefa: coleta judicial ────────────────────────────────────────────
 @app.task(bind=True, max_retries=2, default_retry_delay=300, queue="judicial")
 def task_judicial(self, dias_atras: int = 1):
+    db = None
+    execucao_id = None
     try:
         from database.db import Database
         from collector.judicial_collector import JudicialCollector
 
         db  = Database()
+        execucao_id = db.iniciar_execucao_coleta(
+            "judicial",
+            "task_judicial",
+            {"dias_atras": dias_atras},
+        )
         res = JudicialCollector().run(dias_atras=dias_atras)
 
         salvos = 0
@@ -125,21 +168,35 @@ def task_judicial(self, dias_atras: int = 1):
         if not quentes.empty:
             task_alerta.delay("judicial", quentes.to_dict("records"))
 
+        db.finalizar_execucao_coleta(
+            execucao_id,
+            status="success",
+            registros_coletados=_count_records(res),
+            registros_salvos=salvos,
+        )
         logger.info(f"task_judicial: {salvos} processos")
         return {"status": "ok", "salvos": salvos}
     except Exception as e:
         logger.error(f"task_judicial: {e}")
+        _mark_failed(db, execucao_id, e)
         raise self.retry(exc=e)
 
 
 # ── Tarefa: eventos administrativos ───────────────────────────────────
 @app.task(bind=True, max_retries=2, default_retry_delay=300, queue="admin")
 def task_admin(self, dias_atras: int = 2):
+    db = None
+    execucao_id = None
     try:
         from database.db import Database
         from collector.admin_collector import AdminCollector
 
         db     = Database()
+        execucao_id = db.iniciar_execucao_coleta(
+            "admin",
+            "task_admin",
+            {"dias_atras": dias_atras},
+        )
         eventos = AdminCollector().run(dias_atras=dias_atras)
         db.save_portarias(eventos)
 
@@ -147,21 +204,31 @@ def task_admin(self, dias_atras: int = 2):
         if quentes:
             task_alerta.delay("admin", quentes[:5])
 
+        db.finalizar_execucao_coleta(
+            execucao_id,
+            status="success",
+            registros_coletados=len(eventos),
+            registros_salvos=len(eventos),
+        )
         logger.info(f"task_admin: {len(eventos)} eventos")
         return {"status": "ok", "eventos": len(eventos)}
     except Exception as e:
         logger.error(f"task_admin: {e}")
+        _mark_failed(db, execucao_id, e)
         raise self.retry(exc=e)
 
 
 # ── Tarefa: recalcula scores ───────────────────────────────────────────
 @app.task(bind=True, max_retries=1, queue="default")
 def task_score(self):
+    db = None
+    execucao_id = None
     try:
         from database.db import Database
         from intelligence.taxonomy import calcular_score
 
         db = Database()
+        execucao_id = db.iniciar_execucao_coleta("score", "task_score")
         procs = db.query("SELECT id, classe_processual, assunto_principal FROM processos")
 
         for _, row in procs.iterrows():
@@ -181,10 +248,17 @@ def task_score(self):
             )
             db.save_score(row["id"], {**score.to_dict(), "processo_id": row["id"]})
 
+        db.finalizar_execucao_coleta(
+            execucao_id,
+            status="success",
+            registros_coletados=len(procs),
+            registros_salvos=len(procs),
+        )
         logger.info(f"task_score: {len(procs)} processos recalculados")
         return {"status": "ok", "recalculados": len(procs)}
     except Exception as e:
         logger.error(f"task_score: {e}")
+        _mark_failed(db, execucao_id, e)
         raise self.retry(exc=e)
 
 

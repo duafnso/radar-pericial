@@ -556,11 +556,12 @@ def fetch_car() -> Optional[gpd.GeoDataFrame]:
     Se o site exigir login, retorna None silenciosamente.
     """
     try:
+        verify_ssl = not _env_enabled("ALLOW_INSECURE_CAR_SSL", False)
         r = S.get(
             "https://www.car.gov.br/publico/estados/downloads",
             params={"sigla": "MT"},
             timeout=60, stream=True, allow_redirects=True,
-            verify=False,  # SSL problemático no servidor deles
+            verify=verify_ssl,
         )
         r.raise_for_status()
         content = b"".join(r.iter_content(8192))

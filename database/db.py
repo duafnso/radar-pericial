@@ -117,6 +117,14 @@ LAYER_TABLE = {
 
 _REFERENCE_LAYERS = {"municipios_mt", "limite_estado_mt"}
 
+_GEO_UPSERT_KEYS = {
+    "assentamentos_incra": ["nome_pa", "municipio"],
+    "inpe_prodes": ["ano", "classe"],
+    "inpe_deter": ["view_date", "classname", "state"],
+    "cadastro_ambiental": ["cod_imovel"],
+    "desapropriacao_ativa": ["codigo_imovel"],
+}
+
 
 class Database:
     def __init__(self, url: str = None):
@@ -257,8 +265,18 @@ class Database:
             criado_em TIMESTAMPTZ DEFAULT NOW()
         );
         CREATE INDEX IF NOT EXISTS idx_mov_proc ON movimentacoes(processo_id);
-        CREATE UNIQUE INDEX IF NOT EXISTS ux_mov_unique
-            ON movimentacoes(processo_id, data_movimentacao, descricao);
+        DELETE FROM movimentacoes a
+        USING movimentacoes b
+        WHERE a.id > b.id
+          AND a.processo_id = b.processo_id
+          AND COALESCE(a.data_movimentacao, DATE '0001-01-01') = COALESCE(b.data_movimentacao, DATE '0001-01-01')
+          AND COALESCE(a.descricao, '') = COALESCE(b.descricao, '');
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_mov_unique_business
+            ON movimentacoes(
+                processo_id,
+                (COALESCE(data_movimentacao, DATE '0001-01-01')),
+                md5(COALESCE(descricao, ''))
+            );
 
         CREATE TABLE IF NOT EXISTS publicacoes (
             id SERIAL PRIMARY KEY,
@@ -314,6 +332,18 @@ class Database:
             faixa_probabilidade TEXT DEFAULT 'frio',
             coletado_em TIMESTAMPTZ DEFAULT NOW()
         );
+        DELETE FROM portarias_diario_oficial a
+        USING portarias_diario_oficial b
+        WHERE a.id > b.id
+          AND COALESCE(a.titulo, '') = COALESCE(b.titulo, '')
+          AND COALESCE(a.data_publicacao, '') = COALESCE(b.data_publicacao, '')
+          AND COALESCE(a.fonte, '') = COALESCE(b.fonte, '');
+        CREATE UNIQUE INDEX IF NOT EXISTS ux_portarias_unique_business
+            ON portarias_diario_oficial(
+                md5(COALESCE(titulo, '')),
+                (COALESCE(data_publicacao, '')),
+                (COALESCE(fonte, ''))
+            );
 
         CREATE TABLE IF NOT EXISTS data_lake_raw (
             id SERIAL PRIMARY KEY,
@@ -538,14 +568,97 @@ class Database:
                 conn.commit()
             logger.info(f"SIGEF upsert: {len(gdf)} parcelas processadas")
         except Exception as e:
-            logger.error(f"SIGEF upsert falhou ({e}) — fallback append")
+            logger.error(f"SIGEF upsert falhou ({e}); dados existentes preservados e append ignorado para evitar duplicidade")
             with self.engine.connect() as conn:
                 try:
                     conn.execute(text("DROP TABLE IF EXISTS parcelas_sigef_staging"))
                     conn.commit()
                 except Exception:
                     pass
-            self.save_geodataframe(gdf, "parcelas_sigef", if_exists="append")
+
+    def _safe_ident(self, name: str) -> str:
+        if not name or not name.replace("_", "").isalnum():
+            raise ValueError(f"Identificador SQL invalido: {name}")
+        return f'"{name}"'
+
+    def _table_columns(self, conn, table: str) -> list[str]:
+        rows = conn.execute(
+            text("""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = :table
+                ORDER BY ordinal_position
+            """),
+            {"table": table},
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    def _upsert_geolayer(self, gdf: gpd.GeoDataFrame, table: str, key_cols: list[str]):
+        if gdf is None or gdf.empty:
+            return
+        staging = f"{table}_staging"
+        try:
+            self.save_geodataframe(gdf, staging, if_exists="replace")
+            q_table = self._safe_ident(table)
+            q_staging = self._safe_ident(staging)
+
+            with self.engine.connect() as conn:
+                target_cols = self._table_columns(conn, table)
+                staging_cols = self._table_columns(conn, staging)
+                insert_cols = [
+                    col for col in target_cols
+                    if col != "id" and col in staging_cols
+                ]
+                if "geometry" not in insert_cols:
+                    raise ValueError(f"Layer {table} sem coluna geometry compativel")
+
+                usable_keys = [
+                    col for col in key_cols
+                    if col in target_cols and col in staging_cols
+                ]
+                conditions = []
+                for col in usable_keys:
+                    q_col = self._safe_ident(col)
+                    conditions.append(
+                        f"COALESCE(t.{q_col}::text, '') = COALESCE(s.{q_col}::text, '')"
+                    )
+                if "geometry" in target_cols and "geometry" in staging_cols:
+                    conditions.append(
+                        "md5(encode(ST_AsEWKB(t.geometry), 'hex')) = md5(encode(ST_AsEWKB(s.geometry), 'hex'))"
+                    )
+                if not conditions:
+                    raise ValueError(f"Layer {table} sem chave de deduplicacao utilizavel")
+
+                conn.execute(text(f"""
+                    DELETE FROM {q_table} t
+                    USING {q_staging} s
+                    WHERE {' AND '.join(conditions)}
+                """))
+
+                q_cols = [self._safe_ident(col) for col in insert_cols]
+                conn.execute(text(f"""
+                    INSERT INTO {q_table} ({', '.join(q_cols)})
+                    SELECT {', '.join(q_cols)}
+                    FROM {q_staging}
+                """))
+                conn.execute(text(f"DROP TABLE IF EXISTS {q_staging}"))
+                conn.commit()
+            logger.info(f"{table} upsert: {len(gdf)} registros processados")
+        except Exception as e:
+            logger.error(f"{table} upsert falhou ({e}); dados existentes preservados e append ignorado para evitar duplicidade")
+            with self.engine.connect() as conn:
+                try:
+                    conn.execute(text(f"DROP TABLE IF EXISTS {self._safe_ident(staging)}"))
+                    conn.commit()
+                except Exception:
+                    pass
+
+    def save_desapropriacao_ativa(self, gdf: gpd.GeoDataFrame):
+        self._upsert_geolayer(
+            gdf,
+            "desapropriacao_ativa",
+            _GEO_UPSERT_KEYS["desapropriacao_ativa"],
+        )
 
     def save_all_layers(self, layers: dict):
         for k, v in layers.items():
@@ -557,6 +670,8 @@ class Database:
                 self.save_geodataframe(v, table, if_exists="replace")
             elif table == "parcelas_sigef" and isinstance(v, gpd.GeoDataFrame) and "codigo_imovel" in v.columns:
                 self._upsert_sigef(v)
+            elif table in _GEO_UPSERT_KEYS and isinstance(v, gpd.GeoDataFrame):
+                self._upsert_geolayer(v, table, _GEO_UPSERT_KEYS[table])
             else:
                 self.save_geodataframe(v, table, if_exists="append")
 
@@ -641,6 +756,7 @@ class Database:
                 text("""
                     INSERT INTO movimentacoes (processo_id, data_movimentacao, descricao, fonte, score_evento)
                     VALUES (:pid, :dt, :desc, :fonte, :score)
+                    ON CONFLICT DO NOTHING
                 """),
                 {
                     "pid": processo_id,
@@ -656,6 +772,11 @@ class Database:
         if not portarias:
             return
         df_new = pd.DataFrame(portarias)
+        allowed = [
+            "titulo", "resumo", "data_publicacao", "municipio", "area_ha",
+            "fonte", "orgao", "url", "categoria_agronomica",
+            "score_evento", "faixa_probabilidade",
+        ]
         def _chave(row) -> str:
             return str(row.get("titulo", "") or "") + "|" + str(row.get("data_publicacao", "") or "") + "|" + str(row.get("fonte", "") or "")
         try:
@@ -669,8 +790,41 @@ class Database:
         if df_new.empty:
             logger.info("Portarias: nenhuma nova")
             return
-        df_new.to_sql("portarias_diario_oficial", self.engine, if_exists="append", index=False)
-        logger.info(f"Portarias: {len(df_new)} novas salvas")
+        def _clean_scalar(value):
+            if isinstance(value, (list, dict, tuple, set)):
+                return json_dumps(value) if isinstance(value, dict) else json.dumps(list(value), ensure_ascii=False, default=str)
+            return None if pd.isna(value) else value
+        rows = []
+        for row in df_new.to_dict(orient="records"):
+            clean = {}
+            for col in allowed:
+                value = row.get(col)
+                clean[col] = _clean_scalar(value)
+            rows.append(clean)
+        if not rows:
+            logger.info("Portarias: nenhuma nova")
+            return
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    INSERT INTO portarias_diario_oficial (
+                        titulo, resumo, data_publicacao, municipio, area_ha,
+                        fonte, orgao, url, categoria_agronomica,
+                        score_evento, faixa_probabilidade
+                    )
+                    VALUES (
+                        :titulo, :resumo, :data_publicacao, :municipio, :area_ha,
+                        :fonte, :orgao, :url, :categoria_agronomica,
+                        COALESCE(:score_evento, 0),
+                        COALESCE(:faixa_probabilidade, 'frio')
+                    )
+                    ON CONFLICT DO NOTHING
+                """),
+                rows,
+            )
+            conn.commit()
+        salvas = max(result.rowcount, 0)
+        logger.info(f"Portarias: {salvas} novas salvas")
 
     def criar_perito(self, dados: dict) -> int:
         with self.engine.connect() as conn:
@@ -776,6 +930,45 @@ class Database:
                 )
             conn.commit()
             return result.rowcount > 0
+
+    def alterar_senha_propria(
+        self,
+        user_id: int,
+        senha_atual: str,
+        nova_senha: str,
+        token_atual: Optional[str] = None,
+    ) -> bool:
+        token_hash = _hash_session_token(token_atual) if token_atual else None
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT password_hash FROM usuarios WHERE id=:id AND ativo = TRUE"),
+                {"id": user_id},
+            ).fetchone()
+            if not row:
+                return False
+            try:
+                if not _pwd_context_ref.verify(senha_atual, row[0]):
+                    return False
+            except (ValueError, TypeError):
+                logger.warning("Hash de senha invalido para usuario id=%s.", user_id)
+                return False
+
+            conn.execute(
+                text("UPDATE usuarios SET password_hash=:password_hash WHERE id=:id"),
+                {"id": user_id, "password_hash": _pwd_context_ref.hash(nova_senha)},
+            )
+            conn.execute(
+                text("""
+                    UPDATE user_sessions
+                    SET revogado_em = NOW()
+                    WHERE user_id = :id
+                      AND revogado_em IS NULL
+                      AND (:token_hash IS NULL OR token_hash <> :token_hash)
+                """),
+                {"id": user_id, "token_hash": token_hash},
+            )
+            conn.commit()
+            return True
 
     def registrar_auditoria(
         self,

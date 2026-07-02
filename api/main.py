@@ -361,14 +361,61 @@ def get_current_user(
 
 AuthUser = Annotated[dict, Depends(get_current_user)]
 
+ALLOWED_ROLES = {"admin", "operator", "user", "viewer"}
+
+ROLE_PERMISSIONS = {
+    "admin": {
+        "read_data",
+        "read_operational",
+        "calculate_score",
+        "create_perito",
+        "run_collections",
+        "manage_users",
+        "view_audit",
+    },
+    "operator": {
+        "read_data",
+        "read_operational",
+        "calculate_score",
+        "create_perito",
+        "run_collections",
+    },
+    "user": {
+        "read_data",
+        "calculate_score",
+    },
+    "viewer": {
+        "read_data",
+    },
+}
+
+
+def user_has_permission(user: dict, permission: str) -> bool:
+    role = user.get("role", "viewer")
+    return permission in ROLE_PERMISSIONS.get(role, set())
+
+
+def require_permission(permission: str):
+    def _dependency(user: AuthUser) -> dict:
+        if not user_has_permission(user, permission):
+            raise HTTPException(status_code=403, detail="Permissao insuficiente")
+        return user
+
+    return _dependency
+
 
 def get_current_admin(user: AuthUser) -> dict:
-    if user.get("role") != "admin":
+    if not user_has_permission(user, "manage_users"):
         raise HTTPException(status_code=403, detail="Acesso restrito ao administrador")
     return user
 
 
 AdminUser = Annotated[dict, Depends(get_current_admin)]
+ReadOperationalUser = Annotated[dict, Depends(require_permission("read_operational"))]
+CreatePeritoUser = Annotated[dict, Depends(require_permission("create_perito"))]
+RunCollectionsUser = Annotated[dict, Depends(require_permission("run_collections"))]
+ManageUsersUser = Annotated[dict, Depends(require_permission("manage_users"))]
+ViewAuditUser = Annotated[dict, Depends(require_permission("view_audit"))]
 
 
 def _audit_request(
@@ -428,6 +475,11 @@ class UsuarioSenhaInput(BaseModel):
     password: str
 
 
+class TrocarSenhaInput(BaseModel):
+    senha_atual: str
+    nova_senha: str
+
+
 # ── Autenticação ─────────────────────────────────────────────────────────
 @app.post("/api/login")
 async def login(body: LoginInput, request: Request):
@@ -457,7 +509,50 @@ async def login(body: LoginInput, request: Request):
         entidade="usuario",
         entidade_id=username,
     )
-    return {"status": "ok", "token": token}
+    user = _db.validate_token_user(
+        token,
+        user_agent=request.headers.get("user-agent"),
+        client_ip=client_ip,
+    )
+    return {"status": "ok", "token": token, "user": user}
+
+
+@app.get("/api/me")
+async def api_me(_user: AuthUser):
+    return {"user": _user}
+
+
+@app.patch("/api/me/senha")
+async def trocar_minha_senha(
+    body: TrocarSenhaInput,
+    request: Request,
+    _user: AuthUser,
+    authorization: Annotated[Optional[str], Header()] = None,
+):
+    if not _db:
+        raise HTTPException(status_code=503, detail="Banco de dados nao inicializado")
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Token de autenticacao nao fornecido")
+    _validate_password(body.nova_senha)
+    if body.senha_atual == body.nova_senha:
+        raise HTTPException(status_code=400, detail="Nova senha deve ser diferente da senha atual")
+    token = authorization.split(" ", 1)[1].strip()
+    ok = _db.alterar_senha_propria(
+        user_id=int(_user["id"]),
+        senha_atual=body.senha_atual,
+        nova_senha=body.nova_senha,
+        token_atual=token,
+    )
+    if not ok:
+        raise HTTPException(status_code=401, detail="Senha atual incorreta")
+    _audit_request(
+        request,
+        "usuario_senha_alterada",
+        ator=_user,
+        entidade="usuario",
+        entidade_id=str(_user.get("id")),
+    )
+    return {"status": "ok"}
 
 @app.post("/api/logout")
 async def logout(
@@ -686,7 +781,7 @@ async def peritos(regiao: Optional[str] = Query(None), busca: Optional[str] = Qu
         return {"total": 0, "items": []}
 
 @app.post("/api/peritos")
-async def criar_perito(body: PeritoInput, _user: AuthUser = None):
+async def criar_perito(body: PeritoInput, _user: CreatePeritoUser):
     try:
         if not _db: raise HTTPException(status_code=503, detail="Banco não inicializado")
         pid = _db.criar_perito(body.model_dump())
@@ -716,7 +811,7 @@ async def alertas(limit: int = Query(40, le=200), _user: AuthUser = None):
 
 
 @app.get("/api/coletas/status")
-async def coletas_status(limit: int = Query(50, le=200), _user: AuthUser = None):
+async def coletas_status(limit: int = Query(50, le=200), _user: ReadOperationalUser = None):
     try:
         if not _db:
             raise HTTPException(status_code=503, detail="Banco não inicializado")
@@ -730,7 +825,7 @@ async def coletas_status(limit: int = Query(50, le=200), _user: AuthUser = None)
 
 
 @app.post("/api/coletas/{tipo}/executar")
-async def executar_coleta(tipo: str, request: Request, _admin: AdminUser):
+async def executar_coleta(tipo: str, request: Request, _admin: RunCollectionsUser):
     try:
         from alerts.scheduler import task_admin, task_geo, task_judicial, task_score
 
@@ -760,8 +855,7 @@ async def executar_coleta(tipo: str, request: Request, _admin: AdminUser):
 
 
 def _validate_role(role: str) -> str:
-    allowed = {"admin", "user", "viewer", "operator"}
-    if role not in allowed:
+    if role not in ALLOWED_ROLES:
         raise HTTPException(status_code=400, detail="Role invalida")
     return role
 
@@ -772,7 +866,7 @@ def _validate_password(password: str) -> None:
 
 
 @app.get("/api/admin/usuarios")
-async def admin_listar_usuarios(_admin: AdminUser):
+async def admin_listar_usuarios(_admin: ManageUsersUser):
     try:
         if not _db:
             raise HTTPException(status_code=503, detail="Banco nao inicializado")
@@ -786,7 +880,7 @@ async def admin_listar_usuarios(_admin: AdminUser):
 
 
 @app.post("/api/admin/usuarios")
-async def admin_criar_usuario(body: UsuarioInput, request: Request, _admin: AdminUser):
+async def admin_criar_usuario(body: UsuarioInput, request: Request, _admin: ManageUsersUser):
     try:
         if not _db:
             raise HTTPException(status_code=503, detail="Banco nao inicializado")
@@ -820,7 +914,7 @@ async def admin_criar_usuario(body: UsuarioInput, request: Request, _admin: Admi
 
 
 @app.patch("/api/admin/usuarios/{user_id}/role")
-async def admin_atualizar_role(user_id: int, body: UsuarioRoleInput, request: Request, _admin: AdminUser):
+async def admin_atualizar_role(user_id: int, body: UsuarioRoleInput, request: Request, _admin: ManageUsersUser):
     try:
         if not _db:
             raise HTTPException(status_code=503, detail="Banco nao inicializado")
@@ -846,7 +940,7 @@ async def admin_atualizar_role(user_id: int, body: UsuarioRoleInput, request: Re
 
 
 @app.patch("/api/admin/usuarios/{user_id}/ativo")
-async def admin_definir_usuario_ativo(user_id: int, body: UsuarioAtivoInput, request: Request, _admin: AdminUser):
+async def admin_definir_usuario_ativo(user_id: int, body: UsuarioAtivoInput, request: Request, _admin: ManageUsersUser):
     try:
         if not _db:
             raise HTTPException(status_code=503, detail="Banco nao inicializado")
@@ -871,7 +965,7 @@ async def admin_definir_usuario_ativo(user_id: int, body: UsuarioAtivoInput, req
 
 
 @app.patch("/api/admin/usuarios/{user_id}/senha")
-async def admin_redefinir_senha(user_id: int, body: UsuarioSenhaInput, request: Request, _admin: AdminUser):
+async def admin_redefinir_senha(user_id: int, body: UsuarioSenhaInput, request: Request, _admin: ManageUsersUser):
     try:
         if not _db:
             raise HTTPException(status_code=503, detail="Banco nao inicializado")
@@ -894,7 +988,7 @@ async def admin_redefinir_senha(user_id: int, body: UsuarioSenhaInput, request: 
 
 
 @app.get("/api/admin/auditoria")
-async def admin_listar_auditoria(_admin: AdminUser, limit: int = Query(100, le=500)):
+async def admin_listar_auditoria(_admin: ViewAuditUser, limit: int = Query(100, le=500)):
     try:
         if not _db:
             raise HTTPException(status_code=503, detail="Banco nao inicializado")

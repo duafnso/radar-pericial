@@ -122,3 +122,54 @@ def test_admin_dependency_rejects_non_admin_role():
         main_module.get_current_admin({"id": 2, "username": "user", "role": "user"})
 
     assert exc.value.status_code == 403
+
+
+def test_permission_matrix_allows_operator_to_run_collections():
+    import api.main as main_module
+
+    user = {"id": 2, "username": "operator", "role": "operator"}
+
+    assert main_module.user_has_permission(user, "run_collections") is True
+    assert main_module.user_has_permission(user, "manage_users") is False
+
+
+def test_permission_matrix_keeps_viewer_read_only():
+    import api.main as main_module
+
+    viewer = {"id": 3, "username": "viewer", "role": "viewer"}
+
+    assert main_module.user_has_permission(viewer, "read_data") is True
+    assert main_module.user_has_permission(viewer, "calculate_score") is False
+    assert main_module.user_has_permission(viewer, "run_collections") is False
+
+
+def test_require_permission_accepts_authorized_role():
+    import api.main as main_module
+
+    dependency = main_module.require_permission("create_perito")
+    operator = {"id": 2, "username": "operator", "role": "operator"}
+
+    assert dependency(operator) == operator
+
+
+def test_require_permission_rejects_unauthorized_role():
+    import api.main as main_module
+
+    dependency = main_module.require_permission("view_audit")
+
+    with pytest.raises(main_module.HTTPException) as exc:
+        dependency({"id": 2, "username": "operator", "role": "operator"})
+
+    assert exc.value.status_code == 403
+
+
+def test_validate_role_uses_declared_roles():
+    import api.main as main_module
+
+    for role in main_module.ALLOWED_ROLES:
+        assert main_module._validate_role(role) == role
+
+    with pytest.raises(main_module.HTTPException) as exc:
+        main_module._validate_role("owner")
+
+    assert exc.value.status_code == 400

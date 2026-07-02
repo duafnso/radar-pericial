@@ -38,6 +38,7 @@ Indices criados:
 - `usuario_role_atualizada`: admin alterou papel de usuario.
 - `usuario_status_atualizado`: admin ativou ou desativou usuario.
 - `usuario_senha_redefinida`: admin redefiniu senha de usuario.
+- `usuario_senha_alterada`: usuario autenticado alterou a propria senha.
 
 ## Endpoint
 

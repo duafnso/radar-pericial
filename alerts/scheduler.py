@@ -114,7 +114,7 @@ def task_geo(self):
             if "desapropriacao_flag" in sigef.columns:
                 ativas = sigef[sigef["desapropriacao_flag"] == True]
                 if not ativas.empty:
-                    db.save_geodataframe(ativas, "desapropriacao_ativa")
+                    db.save_desapropriacao_ativa(ativas)
 
         logger.info("task_geo concluída")
         db.finalizar_execucao_coleta(

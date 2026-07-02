@@ -68,10 +68,15 @@ ENABLE_SOURCE_SIGEF=false
 ENABLE_SOURCE_PRODES=true
 ENABLE_SOURCE_DETER=false
 ENABLE_SOURCE_CAR=false
+ALLOW_INSECURE_CAR_SSL=false
 ```
 
 Fontes pesadas ou instaveis, como SIGEF, DETER e CAR, devem entrar somente
 depois que o monitoramento de coletas estiver pronto.
+
+Mantenha `ALLOW_INSECURE_CAR_SSL=false` em producao. Use `true` apenas em
+homologacao controlada, se o endpoint publico do CAR apresentar problema de
+certificado e a fonte estiver explicitamente habilitada.
 
 ## Comando de subida
 
@@ -112,4 +117,3 @@ token.
 - Primeiro usuario admin criado por `DEFAULT_ADMIN_PASSWORD` temporario.
 - Senha admin trocada depois do primeiro login.
 - Logs de `web`, `worker` e `beat` verificados.
-

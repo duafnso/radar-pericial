@@ -283,9 +283,9 @@ input[type=checkbox]{accent-color:var(--field);cursor:pointer}
     <a onclick="nav('score')">Calculadora Pericial</a>
     <a onclick="nav('peritos')">Corpo Pericial</a>
     <a onclick="nav('alertas')">Central de Alertas</a>
-    <a onclick="nav('coletas')">Operacao</a>
-    <a onclick="nav('usuarios')">Usuarios</a>
-    <a onclick="nav('auditoria')">Auditoria</a>
+    <a data-permission="read_operational" onclick="nav('coletas')">Operacao</a>
+    <a data-permission="manage_users" onclick="nav('usuarios')">Usuarios</a>
+    <a data-permission="view_audit" onclick="nav('auditoria')">Auditoria</a>
   </nav>
   <div class="topbar-right">
     <select id="global-regiao" class="form-select" style="background:var(--ink2);color:#fff;border-color:var(--ink3);width:160px;font-size:11px;padding:4px 10px;height:26px;outline:none" onchange="changeGlobalRegion(this.value)">
@@ -299,7 +299,11 @@ input[type=checkbox]{accent-color:var(--field);cursor:pointer}
     </select>
     <div style="width:1px;height:16px;background:rgba(255,255,255,0.1);margin:0 10px"></div>
     <div class="status-dot"></div>
+    <span class="status-txt" id="user-role-txt">Perfil --</span>
+    <div style="width:1px;height:16px;background:rgba(255,255,255,0.1);margin:0 10px"></div>
     <span class="status-txt" id="status-txt">Sistema ativo · MT</span>
+    <div style="width:1px;height:16px;background:rgba(255,255,255,0.1);margin:0 10px"></div>
+    <button class="btn btn-ghost" style="color:var(--ink4);padding:0" onclick="trocarMinhaSenha()">Senha</button>
     <div style="width:1px;height:16px;background:rgba(255,255,255,0.1);margin:0 10px"></div>
     <button class="btn btn-ghost" style="color:var(--ink4);padding:0" onclick="doLogout()">Sair</button>
   </div>
@@ -320,9 +324,9 @@ input[type=checkbox]{accent-color:var(--field);cursor:pointer}
     <div class="sidebar-section">Ferramentas</div>
     <div class="nav-item" onclick="nav('score')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.2"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.2" stroke-linecap="square"/></svg>Calculadora Pericial</div>
     <div class="nav-item" onclick="nav('alertas')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M8 2a4 4 0 014 4v3l1 2H3l1-2V6a4 4 0 014-4zM6.5 13a1.5 1.5 0 003 0" stroke="currentColor" stroke-width="1.2"/></svg>Central de Alertas</div>
-    <div class="nav-item" onclick="nav('coletas')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v3H3zM3 10h10v3H3zM5 6v4M11 6v4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>Operacao de Coletas</div>
-    <div class="nav-item" onclick="nav('usuarios')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.8 13c.4-2.7 2-4.4 4.2-4.4s3.8 1.7 4.2 4.4M11 5h4M13 3v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="square"/></svg>Usuarios</div>
-    <div class="nav-item" onclick="nav('auditoria')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 2h10v12H3zM5 5h6M5 8h6M5 11h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="square" stroke-linejoin="round"/></svg>Auditoria</div>
+    <div class="nav-item" data-permission="read_operational" onclick="nav('coletas')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 3h10v3H3zM3 10h10v3H3zM5 6v4M11 6v4" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/></svg>Operacao de Coletas</div>
+    <div class="nav-item" data-permission="manage_users" onclick="nav('usuarios')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.8 13c.4-2.7 2-4.4 4.2-4.4s3.8 1.7 4.2 4.4M11 5h4M13 3v4" stroke="currentColor" stroke-width="1.2" stroke-linecap="square"/></svg>Usuarios</div>
+    <div class="nav-item" data-permission="view_audit" onclick="nav('auditoria')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><path d="M3 2h10v12H3zM5 5h6M5 8h6M5 11h4" stroke="currentColor" stroke-width="1.2" stroke-linecap="square" stroke-linejoin="round"/></svg>Auditoria</div>
     <div class="nav-item" onclick="nav('peritos')"><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="3" stroke="currentColor" stroke-width="1.2"/><path d="M2 14c0-3.31 2.69-6 6-6s6 2.69 6 6" stroke="currentColor" stroke-width="1.2"/></svg>Corpo Pericial</div>
     <div class="sidebar-footer" id="sidebar-footer">Mato Grosso · v2.0<br>Carregando...</div>
   </aside>
@@ -766,10 +770,10 @@ input[type=checkbox]{accent-color:var(--field);cursor:pointer}
           <span style="font-family:var(--fm);font-size:9px;color:var(--ink4)">Restrito ao usuario admin</span>
         </div>
         <div class="card-body" style="display:flex;gap:8px;flex-wrap:wrap">
-          <button class="btn btn-secondary" onclick="runColeta('geo')">Executar Geo</button>
-          <button class="btn btn-secondary" onclick="runColeta('judicial')">Executar Judicial</button>
-          <button class="btn btn-secondary" onclick="runColeta('admin')">Executar Admin</button>
-          <button class="btn btn-secondary" onclick="runColeta('score')">Recalcular Score</button>
+          <button class="btn btn-secondary" data-permission="run_collections" onclick="runColeta('geo')">Executar Geo</button>
+          <button class="btn btn-secondary" data-permission="run_collections" onclick="runColeta('judicial')">Executar Judicial</button>
+          <button class="btn btn-secondary" data-permission="run_collections" onclick="runColeta('admin')">Executar Admin</button>
+          <button class="btn btn-secondary" data-permission="run_collections" onclick="runColeta('score')">Recalcular Score</button>
         </div>
       </div>
       <div class="metric-grid" style="grid-template-columns:repeat(4,1fr)">
@@ -988,6 +992,20 @@ const STATE = {
   leafletMap: null,
   regiaoGlobal: localStorage.getItem('radar_regiao') || '',
   token: localStorage.getItem('radar_token') || '',
+  user: JSON.parse(localStorage.getItem('radar_user') || 'null'),
+};
+
+const ROLE_PERMISSIONS = {
+  admin: ['read_data','read_operational','calculate_score','create_perito','run_collections','manage_users','view_audit'],
+  operator: ['read_data','read_operational','calculate_score','create_perito','run_collections'],
+  user: ['read_data','calculate_score'],
+  viewer: ['read_data'],
+};
+
+const SCREEN_PERMISSIONS = {
+  coletas: 'read_operational',
+  usuarios: 'manage_users',
+  auditoria: 'view_audit',
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -998,9 +1016,43 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 });
 
-function showApp() {
+function hasPermission(permission) {
+  const role = STATE.user?.role || 'viewer';
+  return (ROLE_PERMISSIONS[role] || []).includes(permission);
+}
+
+function setCurrentUser(user) {
+  STATE.user = user || null;
+  if (STATE.user) {
+    localStorage.setItem('radar_user', JSON.stringify(STATE.user));
+  } else {
+    localStorage.removeItem('radar_user');
+  }
+  applyPermissions();
+}
+
+async function loadCurrentUser() {
+  const data = await apiGet('/api/me');
+  if (data?.user) setCurrentUser(data.user);
+  return data?.user || null;
+}
+
+function applyPermissions() {
+  document.querySelectorAll('[data-permission]').forEach(el => {
+    el.style.display = hasPermission(el.dataset.permission) ? '' : 'none';
+  });
+  const roleEl = document.getElementById('user-role-txt');
+  if (roleEl) roleEl.textContent = STATE.user ? `Perfil ${STATE.user.role}` : 'Perfil --';
+}
+
+async function showApp() {
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app-container').style.display = 'block';
+    if (!STATE.user && STATE.token) {
+        await loadCurrentUser();
+    } else {
+        applyPermissions();
+    }
     if(STATE.regiaoGlobal) {
         let el = document.getElementById('global-regiao');
         if(el) el.value = STATE.regiaoGlobal;
@@ -1022,6 +1074,7 @@ async function handleLogin(e) {
   if(token && token.status === 'ok') {
       STATE.token = token.token;
       localStorage.setItem('radar_token', token.token);
+      setCurrentUser(token.user || null);
       showApp();
   } else {
       showToast('Credenciais inválidas ou erro no servidor.');
@@ -1030,10 +1083,36 @@ async function handleLogin(e) {
 
 function doLogout() {
   STATE.token = '';
+  STATE.user = null;
   localStorage.removeItem('radar_token');
+  localStorage.removeItem('radar_user');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('app-container').style.display = 'none';
   document.getElementById('login-pass').value = '';
+}
+
+async function trocarMinhaSenha() {
+  const senhaAtual = window.prompt('Senha atual:');
+  if (!senhaAtual) return;
+  const novaSenha = window.prompt('Nova senha:');
+  if (!novaSenha) return;
+  if (novaSenha.length < 8) {
+    showToast('Nova senha deve ter ao menos 8 caracteres.');
+    return;
+  }
+  if (senhaAtual === novaSenha) {
+    showToast('Nova senha deve ser diferente da senha atual.');
+    return;
+  }
+  const result = await apiPatch('/api/me/senha', {
+    senha_atual: senhaAtual,
+    nova_senha: novaSenha,
+  });
+  if (result?.status === 'ok') {
+    showToast('Senha alterada. Outras sessoes foram revogadas.');
+  } else {
+    showToast('Nao foi possivel alterar a senha.');
+  }
 }
 
 function changeGlobalRegion(regiao) {
@@ -1118,6 +1197,11 @@ function showToast(msg, duration=3000) {
 // NAVEGAÇÃO
 // ═══════════════════════════════════════════════════════════
 function nav(id) {
+  const required = SCREEN_PERMISSIONS[id];
+  if (required && !hasPermission(required)) {
+    showToast('Seu perfil nao tem permissao para acessar esta area.');
+    id = 'dashboard';
+  }
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.querySelectorAll('.topbar-nav a').forEach(a => a.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
@@ -1874,12 +1958,12 @@ async function loadPeritos() {
           <div style="font-family:var(--fm);font-size:9px;color:var(--ink4);letter-spacing:.08em;text-transform:uppercase">Score profissional</div>
           <div class="score-profissional" style="color:${scoreC(p.score_profissional)}">${p.score_profissional||0}</div>
         </div>
-        <button class="btn btn-ghost" onclick="editarPerito(${p.id}, ${JSON.stringify(p.nome||'').replace(/"/g,'&quot;')})">Editar</button>
       </div>
     </div>`}).join('') + addCellBtn();
 }
 
 function addCellBtn() {
+  if (!hasPermission('create_perito')) return '';
   return `<div class="perito-cell" style="border:1px dashed var(--rule-dark);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;cursor:pointer;background:var(--paper)" onclick="openModalPerito()">
     <div style="width:36px;height:36px;border:1px dashed var(--rule-dark);border-radius:2px;display:flex;align-items:center;justify-content:center;color:var(--ink4);font-size:20px;font-weight:300">+</div>
     <div style="font-family:var(--fm);font-size:10px;color:var(--ink4);letter-spacing:.08em;text-align:center">Cadastrar<br>novo profissional</div>
@@ -1887,6 +1971,10 @@ function addCellBtn() {
 }
 
 function openModalPerito() {
+  if (!hasPermission('create_perito')) {
+    showToast('Seu perfil nao pode cadastrar peritos.');
+    return;
+  }
   ['p-nome','p-registro','p-especialidades','p-municipios'].forEach(id => {
     const el = document.getElementById(id); if (el) el.value = '';
   });
@@ -1906,6 +1994,10 @@ function editarPerito(id, nome) {
 }
 
 async function salvarPerito() {
+  if (!hasPermission('create_perito')) {
+    showToast('Seu perfil nao pode cadastrar peritos.');
+    return;
+  }
   const body = {
     nome:                  document.getElementById('p-nome')?.value?.trim() || '',
     registro_profissional: document.getElementById('p-registro')?.value?.trim() || '',
@@ -1989,6 +2081,10 @@ async function loadAlertas() {
 async function loadUsuarios() {
   const tbody = document.getElementById('usuarios-table');
   if (!tbody) return;
+  if (!hasPermission('manage_users')) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>Seu perfil nao pode gerenciar usuarios.</p></div></td></tr>';
+    return;
+  }
   tbody.innerHTML = '<tr><td colspan="7"><div class="loading">Carregando...</div></td></tr>';
 
   const data = await apiGet('/api/admin/usuarios');
@@ -2026,6 +2122,10 @@ async function loadUsuarios() {
 async function loadAuditoria() {
   const tbody = document.getElementById('auditoria-table');
   if (!tbody) return;
+  if (!hasPermission('view_audit')) {
+    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><p>Seu perfil nao pode consultar auditoria.</p></div></td></tr>';
+    return;
+  }
   tbody.innerHTML = '<tr><td colspan="7"><div class="loading">Carregando...</div></td></tr>';
 
   const data = await apiGet('/api/admin/auditoria?limit=100');
@@ -2056,6 +2156,10 @@ async function loadAuditoria() {
 }
 
 async function criarUsuario() {
+  if (!hasPermission('manage_users')) {
+    showToast('Seu perfil nao pode criar usuarios.');
+    return;
+  }
   const body = {
     username: document.getElementById('u-username')?.value?.trim() || '',
     password: document.getElementById('u-password')?.value || '',
@@ -2077,6 +2181,11 @@ async function criarUsuario() {
 }
 
 async function alterarRoleUsuario(id, role) {
+  if (!hasPermission('manage_users')) {
+    showToast('Seu perfil nao pode alterar usuarios.');
+    loadUsuarios();
+    return;
+  }
   const result = await apiPatch(`/api/admin/usuarios/${id}/role`, {role});
   if (result?.status === 'ok') {
     showToast('Role atualizada.');
@@ -2087,6 +2196,10 @@ async function alterarRoleUsuario(id, role) {
 }
 
 async function toggleUsuarioAtivo(id, ativo) {
+  if (!hasPermission('manage_users')) {
+    showToast('Seu perfil nao pode alterar usuarios.');
+    return;
+  }
   const result = await apiPatch(`/api/admin/usuarios/${id}/ativo`, {ativo});
   if (result?.status === 'ok') {
     showToast('Status atualizado.');
@@ -2097,6 +2210,10 @@ async function toggleUsuarioAtivo(id, ativo) {
 }
 
 async function redefinirSenhaUsuario(id, username) {
+  if (!hasPermission('manage_users')) {
+    showToast('Seu perfil nao pode redefinir senhas.');
+    return;
+  }
   const password = window.prompt(`Nova senha para ${username}:`);
   if (!password) return;
   if (password.length < 8) {
@@ -2114,6 +2231,10 @@ async function redefinirSenhaUsuario(id, username) {
 async function loadColetas() {
   const tbody = document.getElementById('coletas-table');
   if (!tbody) return;
+  if (!hasPermission('read_operational')) {
+    tbody.innerHTML = '<tr><td colspan="8"><div class="empty-state"><p>Seu perfil nao pode consultar operacao de coletas.</p></div></td></tr>';
+    return;
+  }
   tbody.innerHTML = '<tr><td colspan="8"><div class="loading">Carregando...</div></td></tr>';
 
   const data = await apiGet('/api/coletas/status?limit=50');
@@ -2165,6 +2286,10 @@ async function loadColetas() {
 }
 
 async function runColeta(tipo) {
+  if (!hasPermission('run_collections')) {
+    showToast('Seu perfil nao pode executar coletas.');
+    return;
+  }
   const labels = {geo:'Geo', judicial:'Judicial', admin:'Admin', score:'Score'};
   const ok = window.confirm(`Enfileirar coleta ${labels[tipo] || tipo} agora?`);
   if (!ok) return;

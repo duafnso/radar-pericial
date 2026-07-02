@@ -7,8 +7,22 @@ O controle de acesso inicial do Radar Pericial usa um campo `role` na tabela
 
 | Role | Uso |
 | --- | --- |
-| `admin` | Pode acessar endpoints administrativos, incluindo disparo manual de coletas. |
-| `user` | Pode acessar as telas e APIs autenticadas comuns. |
+| `admin` | Administracao completa, usuarios, auditoria, operacao e consultas. |
+| `operator` | Operacao do sistema: coletas, peritos e consultas operacionais. |
+| `user` | Uso comum: consulta de dados e calculo de score. |
+| `viewer` | Perfil somente leitura para dados comuns. |
+
+## Matriz de permissoes
+
+| Permissao | admin | operator | user | viewer |
+| --- | --- | --- | --- | --- |
+| `read_data` | sim | sim | sim | sim |
+| `read_operational` | sim | sim | nao | nao |
+| `calculate_score` | sim | sim | sim | nao |
+| `create_perito` | sim | sim | nao | nao |
+| `run_collections` | sim | sim | nao | nao |
+| `manage_users` | sim | nao | nao | nao |
+| `view_audit` | sim | nao | nao | nao |
 
 ## Usuario admin inicial
 
@@ -22,16 +36,21 @@ Em producao:
 3. Troque a senha assim que existir tela/endpoint proprio para isso.
 4. Remova `DEFAULT_ADMIN_PASSWORD` do ambiente para evitar reset involuntario.
 
-## Endpoints administrativos atuais
+## Endpoints protegidos por permissao
 
 | Endpoint | Requisito |
 | --- | --- |
-| `GET /api/admin/usuarios` | `role='admin'` |
-| `POST /api/admin/usuarios` | `role='admin'` |
-| `PATCH /api/admin/usuarios/{user_id}/role` | `role='admin'` |
-| `PATCH /api/admin/usuarios/{user_id}/ativo` | `role='admin'` |
-| `PATCH /api/admin/usuarios/{user_id}/senha` | `role='admin'` |
-| `POST /api/coletas/{tipo}/executar` | `role='admin'` |
+| `GET /api/admin/usuarios` | `manage_users` |
+| `POST /api/admin/usuarios` | `manage_users` |
+| `PATCH /api/admin/usuarios/{user_id}/role` | `manage_users` |
+| `PATCH /api/admin/usuarios/{user_id}/ativo` | `manage_users` |
+| `PATCH /api/admin/usuarios/{user_id}/senha` | `manage_users` |
+| `GET /api/admin/auditoria` | `view_audit` |
+| `GET /api/coletas/status` | `read_operational` |
+| `POST /api/coletas/{tipo}/executar` | `run_collections` |
+| `POST /api/peritos` | `create_perito` |
+| `GET /api/me` | usuario autenticado |
+| `PATCH /api/me/senha` | usuario autenticado |
 
 ## Tela administrativa
 
@@ -44,8 +63,53 @@ permite:
 - ativar/desativar conta;
 - redefinir senha.
 
-Todas as acoes usam os endpoints administrativos e exigem token com
-`role='admin'`.
+Todas as acoes usam endpoints protegidos por token. Gestao de usuarios e
+auditoria continuam restritas ao `admin`; operacao de coletas pode ser feita
+por `admin` ou `operator`.
+
+## Comportamento da interface
+
+Ao fazer login, a API retorna o token e os dados basicos do usuario autenticado.
+Quando a pagina e reaberta com token salvo, a interface consulta `GET /api/me`.
+
+A UI usa a matriz de permissoes para:
+
+- mostrar o perfil atual na barra superior;
+- ocultar menu `Operacao` para quem nao possui `read_operational`;
+- ocultar menu `Usuarios` para quem nao possui `manage_users`;
+- ocultar menu `Auditoria` para quem nao possui `view_audit`;
+- ocultar botoes de disparo manual para quem nao possui `run_collections`;
+- ocultar cadastro de peritos para quem nao possui `create_perito`.
+
+Essa camada e apenas ergonomia e reducao de erro operacional. A regra definitiva
+continua no backend, por meio das dependencias de permissao dos endpoints.
+
+## Troca de senha pelo proprio usuario
+
+Endpoint:
+
+```http
+PATCH /api/me/senha
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+```json
+{
+  "senha_atual": "senha-atual",
+  "nova_senha": "nova-senha-forte"
+}
+```
+
+Regras:
+
+- exige usuario autenticado;
+- exige senha atual correta;
+- exige nova senha com ao menos 8 caracteres;
+- nova senha deve ser diferente da senha atual;
+- revoga outras sessoes do mesmo usuario;
+- mantem a sessao atual ativa;
+- registra auditoria `usuario_senha_alterada`.
 
 ## Criar usuario
 
@@ -81,6 +145,5 @@ Roles aceitos:
 
 ## Proximos passos
 
-- Criar endpoint de troca de senha pelo proprio usuario.
 - Adicionar filtros por role/status na tela de usuarios.
-- Revisar permissoes finas para `operator` e `viewer`.
+- Exibir mensagens de permissao mais especificas por tela.

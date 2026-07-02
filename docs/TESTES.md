@@ -37,9 +37,10 @@ A primeira suite cobre regras criticas de configuracao:
 - wildcard `*` bloqueado em CORS de producao.
 - documentacao OpenAPI desabilitada por padrao em producao.
 - throttle basico de tentativas de login.
+- matriz de permissoes por role.
+- dependencias de permissao para aceitar/rejeitar usuarios.
 
 ## Observacao
 
 Os testes de integracao com banco devem rodar em ambiente com PostgreSQL/PostGIS.
 Nao use o banco de producao para testes automatizados.
-

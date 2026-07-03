@@ -1,0 +1,16 @@
+{
+  "scripts": {
+    "frontend:dev": "vite --host 0.0.0.0",
+    "frontend:build": "vite build && node frontend/scripts/sync-build.mjs",
+    "frontend:preview": "vite preview --host 0.0.0.0"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^5.0.0",
+    "lucide-react": "^0.468.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {}
+}

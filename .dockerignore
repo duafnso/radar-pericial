@@ -15,6 +15,8 @@ __pycache__/
 .venv/
 venv/
 env/
+node_modules/
+frontend/dist/
 
 celerybeat-schedule
 celerybeat.pid

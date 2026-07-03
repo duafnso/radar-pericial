@@ -18,6 +18,8 @@ htmlcov/
 .venv/
 venv/
 env/
+node_modules/
+frontend/dist/
 
 # Celery
 celerybeat-schedule

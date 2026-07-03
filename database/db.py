@@ -1075,6 +1075,33 @@ class Database:
             )
             conn.commit()
 
+    def atualizar_execucao_coleta(
+        self,
+        execucao_id: int,
+        registros_coletados: Optional[int] = None,
+        registros_salvos: Optional[int] = None,
+        erro: Optional[str] = None,
+    ) -> None:
+        if not execucao_id:
+            return
+        with self.engine.connect() as conn:
+            conn.execute(
+                text("""
+                    UPDATE execucoes_coleta
+                    SET registros_coletados = COALESCE(:coletados, registros_coletados),
+                        registros_salvos = COALESCE(:salvos, registros_salvos),
+                        erro = COALESCE(:erro, erro)
+                    WHERE id = :id
+                """),
+                {
+                    "id": execucao_id,
+                    "coletados": registros_coletados,
+                    "salvos": registros_salvos,
+                    "erro": (erro or "")[:2000] if erro else None,
+                },
+            )
+            conn.commit()
+
     def listar_execucoes_coleta(self, limit: int = 50) -> pd.DataFrame:
         return self.query(
             """

@@ -70,6 +70,26 @@ def _count_records(payload) -> int:
     return _safe_len(payload)
 
 
+def _save_judicial_processos(db, processos: list) -> int:
+    salvos = 0
+    for item in processos:
+        proc = dict(item)
+        score_dict = proc.pop("_score", {})
+        movs = proc.pop("_movimentacoes", [])
+        pid = db.upsert_processo(proc)
+        if pid and score_dict:
+            db.save_score(pid, {**score_dict, "processo_id": pid})
+        for mov in movs[:5]:
+            db.save_movimentacao(pid, {
+                "data_movimentacao": proc.get("data_distribuicao"),
+                "descricao": mov,
+                "fonte": proc.get("tribunal", "judicial"),
+                "score_evento": 0,
+            })
+        salvos += 1
+    return salvos
+
+
 def _mark_failed(db, execucao_id, exc: Exception) -> None:
     if db is None or execucao_id is None:
         return
@@ -137,7 +157,13 @@ def task_judicial(self, dias_atras: int = 1):
     execucao_id = None
     try:
         from database.db import Database
-        from collector.judicial_collector import JudicialCollector
+        from collector.judicial_collector import (
+            CLASSES_ALVO,
+            JudicialCollector,
+            _env_enabled,
+            _env_int,
+            fetch_datajud,
+        )
 
         db  = Database()
         execucao_id = db.iniciar_execucao_coleta(
@@ -145,23 +171,44 @@ def task_judicial(self, dias_atras: int = 1):
             "task_judicial",
             {"dias_atras": dias_atras},
         )
-        res = JudicialCollector().run(dias_atras=dias_atras)
 
+        coletados = 0
         salvos = 0
-        for proc in res.get("processos", []):
-            score_dict = proc.pop("_score", {})
-            movs       = proc.pop("_movimentacoes", [])
-            pid = db.upsert_processo(proc)
-            if pid and score_dict:
-                db.save_score(pid, {**score_dict, "processo_id": pid})
-            for mov in movs[:5]:
-                db.save_movimentacao(pid, {
-                    "data_movimentacao": proc.get("data_distribuicao"),
-                    "descricao": mov,
-                    "fonte": proc.get("tribunal", "judicial"),
-                    "score_evento": 0,
-                })
-            salvos += 1
+        vistos = set()
+
+        if _env_enabled("ENABLE_SOURCE_DATAJUD", True):
+            max_per_class = _env_int("DATAJUD_MAX_RESULTS_PER_CLASS", 1200)
+            class_limit = max(1, min(_env_int("DATAJUD_CLASSES_LIMIT", 4), len(CLASSES_ALVO)))
+            for classe in CLASSES_ALVO[:class_limit]:
+                lote = fetch_datajud(classe, dias_atras=dias_atras, max_results=max_per_class)
+                coletados += len(lote)
+                novos = []
+                for proc in lote:
+                    cnj = proc.get("numero_cnj")
+                    if cnj and cnj not in vistos:
+                        vistos.add(cnj)
+                        novos.append(proc)
+                salvos += _save_judicial_processos(db, novos)
+                db.atualizar_execucao_coleta(
+                    execucao_id,
+                    registros_coletados=coletados,
+                    registros_salvos=salvos,
+                )
+                logger.info(
+                    "task_judicial parcial: classe='%s', coletados=%s, salvos=%s",
+                    classe,
+                    coletados,
+                    salvos,
+                )
+        else:
+            res = JudicialCollector().run(dias_atras=dias_atras)
+            coletados = _count_records(res)
+            salvos = _save_judicial_processos(db, res.get("processos", []))
+            db.atualizar_execucao_coleta(
+                execucao_id,
+                registros_coletados=coletados,
+                registros_salvos=salvos,
+            )
 
         # Verifica janelas quentes e dispara alerta
         quentes = db.get_processos_quentes(faixa="janela_quente", limit=5)
@@ -171,7 +218,7 @@ def task_judicial(self, dias_atras: int = 1):
         db.finalizar_execucao_coleta(
             execucao_id,
             status="success",
-            registros_coletados=_count_records(res),
+            registros_coletados=coletados,
             registros_salvos=salvos,
         )
         logger.info(f"task_judicial: {salvos} processos")

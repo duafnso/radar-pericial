@@ -65,6 +65,16 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _env_float(name: str, default: float) -> float:
+    v = os.getenv(name)
+    if v is None:
+        return default
+    try:
+        return float(v)
+    except Exception:
+        return default
+
+
 def _extract_hits(payload: dict) -> list:
     hits = (payload or {}).get("hits", {})
     if isinstance(hits, dict):
@@ -79,8 +89,9 @@ def _extract_hits(payload: dict) -> list:
 def fetch_datajud(classe: str, dias_atras: int = 30, max_results: int = 100) -> list:
     url = "https://api-publica.datajud.cnj.jus.br/api_publica_tjmt/_search"
     data_ini = (datetime.now() - timedelta(days=dias_atras)).strftime("%Y-%m-%d")
-    page_size = max(20, min(_env_int("DATAJUD_PAGE_SIZE", 200), 500))
+    page_size = max(10, min(_env_int("DATAJUD_PAGE_SIZE", 50), 200))
     max_total = max(page_size, _env_int("DATAJUD_MAX_RESULTS_PER_CLASS", max_results))
+    request_delay = max(0.0, _env_float("DATAJUD_REQUEST_DELAY_SECONDS", 2.0))
 
     query_base = {
         "bool": {
@@ -117,7 +128,12 @@ def fetch_datajud(classe: str, dias_atras: int = 30, max_results: int = 100) -> 
                     "orgaoJulgador", "assuntos", "dataAjuizamento", "movimentos", "municipio",
                 ],
             }
-            r = S.post(url, json=payload, timeout=30)
+            if offset > 0 and request_delay:
+                time.sleep(request_delay)
+            r = S.post(url, json=payload, timeout=60)
+            if r.status_code == 429:
+                logger.warning(f"DataJud '{classe}': limite de taxa atingido (429); interrompendo classe")
+                break
             r.raise_for_status()
             hits = _extract_hits(r.json())
             if not hits:
@@ -154,7 +170,12 @@ def fetch_datajud(classe: str, dias_atras: int = 30, max_results: int = 100) -> 
                     "orgaoJulgador", "assuntos", "dataAjuizamento", "movimentos", "municipio",
                 ],
             }
-            r = S.post(url, json=payload_fallback, timeout=30)
+            if request_delay:
+                time.sleep(request_delay)
+            r = S.post(url, json=payload_fallback, timeout=60)
+            if r.status_code == 429:
+                logger.warning(f"DataJud '{classe}' fallback: limite de taxa atingido (429)")
+                return out
             r.raise_for_status()
             hits = _extract_hits(r.json())
             for h in hits:

@@ -1117,6 +1117,58 @@ class Database:
             {"limit": limit},
         )
 
+    def resumo_execucoes_coleta(self) -> pd.DataFrame:
+        return self.query(
+            """
+            WITH ranked AS (
+                SELECT *,
+                       ROW_NUMBER() OVER (PARTITION BY fonte ORDER BY iniciado_em DESC) AS rn
+                FROM execucoes_coleta
+            ),
+            agg AS (
+                SELECT fonte,
+                       COUNT(*) AS total_execucoes,
+                       SUM(COALESCE(registros_coletados, 0)) AS total_coletados,
+                       SUM(COALESCE(registros_salvos, 0)) AS total_salvos,
+                       AVG(duracao_segundos) AS duracao_media_segundos,
+                       BOOL_OR(status = 'running') AS em_execucao,
+                       MAX(iniciado_em) FILTER (WHERE status = 'failed') AS ultima_falha
+                FROM execucoes_coleta
+                GROUP BY fonte
+            )
+            SELECT a.fonte,
+                   r.status AS ultimo_status,
+                   r.tarefa AS ultima_tarefa,
+                   r.iniciado_em::text AS ultima_execucao,
+                   r.finalizado_em::text AS ultimo_fim,
+                   COALESCE(r.registros_coletados, 0) AS ultimos_coletados,
+                   COALESCE(r.registros_salvos, 0) AS registros_salvos,
+                   r.erro,
+                   a.em_execucao,
+                   a.total_execucoes,
+                   a.total_coletados,
+                   a.total_salvos,
+                   a.duracao_media_segundos,
+                   a.ultima_falha::text AS ultima_falha,
+                   CASE
+                       WHEN COALESCE(r.erro, '') ILIKE '%429%' OR COALESCE(r.erro, '') ILIKE '%too many requests%'
+                           THEN 'Limite de taxa da fonte externa. Aguarde antes de tentar novamente.'
+                       WHEN COALESCE(r.erro, '') ILIKE '%401%' OR COALESCE(r.erro, '') ILIKE '%apikey%' OR COALESCE(r.erro, '') ILIKE '%unauthorized%'
+                           THEN 'Chave de API ausente ou inválida.'
+                       WHEN COALESCE(r.erro, '') ILIKE '%timeout%' OR COALESCE(r.erro, '') ILIKE '%timed out%'
+                           THEN 'A fonte externa demorou para responder.'
+                       WHEN r.status = 'running'
+                           THEN 'Coleta em andamento.'
+                       WHEN r.status = 'success' AND COALESCE(r.registros_salvos, 0) = 0
+                           THEN 'Coleta concluída sem novos registros.'
+                       ELSE ''
+                   END AS mensagem_operacional
+            FROM agg a
+            JOIN ranked r ON r.fonte = a.fonte AND r.rn = 1
+            ORDER BY r.iniciado_em DESC
+            """
+        )
+
     def query(self, sql: str, params: dict = None) -> pd.DataFrame:
         with self.engine.connect() as conn:
             return pd.read_sql_query(text(sql), conn, params=params or {})

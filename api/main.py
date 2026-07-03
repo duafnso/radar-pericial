@@ -824,6 +824,20 @@ async def coletas_status(limit: int = Query(50, le=200), _user: ReadOperationalU
         raise HTTPException(status_code=500, detail="Erro ao consultar status das coletas")
 
 
+@app.get("/api/coletas/resumo")
+async def coletas_resumo(_user: ReadOperationalUser = None):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco não inicializado")
+        df = _db.resumo_execucoes_coleta()
+        return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"coletas_resumo: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao consultar resumo das coletas")
+
+
 @app.post("/api/coletas/{tipo}/executar")
 async def executar_coleta(tipo: str, request: Request, _admin: RunCollectionsUser):
     try:

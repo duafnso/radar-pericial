@@ -35,7 +35,7 @@ Statuses esperados:
 
 ## Consulta via API
 
-Endpoint protegido:
+Historico detalhado protegido:
 
 ```http
 GET /api/coletas/status?limit=50
@@ -65,6 +65,48 @@ Resposta:
 }
 ```
 
+Resumo operacional protegido:
+
+```http
+GET /api/coletas/resumo
+Authorization: Bearer <token>
+```
+
+Resposta esperada:
+
+```json
+{
+  "total": 1,
+  "items": [
+    {
+      "fonte": "judicial",
+      "ultimo_status": "success",
+      "ultima_tarefa": "task_judicial",
+      "ultima_execucao": "2026-07-01 06:00:00-04",
+      "ultimo_fim": "2026-07-01 06:03:20-04",
+      "ultimos_coletados": 120,
+      "registros_salvos": 118,
+      "erro": "",
+      "em_execucao": false,
+      "total_execucoes": 30,
+      "total_coletados": 4000,
+      "total_salvos": 3900,
+      "duracao_media_segundos": 210,
+      "ultima_falha": "",
+      "mensagem_operacional": ""
+    }
+  ]
+}
+```
+
+Mensagens operacionais amigaveis sao geradas para:
+
+- DataJud `429` ou `Too Many Requests`;
+- DataJud `401`, `APIKey` ausente/invalida ou `unauthorized`;
+- timeout da fonte externa;
+- coleta em andamento;
+- coleta concluida sem novos registros.
+
 ## Disparo manual
 
 Endpoint protegido para usuarios com `role='admin'`:
@@ -84,9 +126,12 @@ Tipos aceitos:
 O endpoint apenas enfileira a tarefa no Celery. A execucao real acontece no
 worker e aparece posteriormente em `/api/coletas/status`.
 
-## Proximo passo de produto
+## Uso no produto
 
-O painel administrativo deve consumir `/api/coletas/status` para exibir:
+O dashboard consome `/api/coletas/resumo` para mostrar a saude operacional das
+fontes sem precisar calcular tudo no cliente.
+
+A tela de operacao continua consumindo `/api/coletas/status` para exibir:
 
 - ultima coleta por fonte;
 - tempo de duracao;
@@ -94,4 +139,4 @@ O painel administrativo deve consumir `/api/coletas/status` para exibir:
 - quantidade coletada;
 - quantidade salva;
 - erro resumido;
-- botao futuro para "executar agora".
+- botoes de disparo manual para `geo`, `judicial`, `admin` e `score`.

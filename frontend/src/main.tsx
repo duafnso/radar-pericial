@@ -16,6 +16,11 @@ import {
   Users,
   UserRoundCog
 } from "lucide-react";
+import { useApiClient } from "./api/client";
+import { ROLE_PERMISSIONS, SCREEN_PERMISSIONS } from "./auth/permissions";
+import { useLocalState } from "./hooks/useLocalState";
+import type { ApiClient, ApiUser, Coleta, NavItem, Processo, Screen } from "./types";
+import { fmt, friendlyError, scoreClass, scoreLabel, shortDate } from "./utils/format";
 import "./styles.css";
 
 declare global {
@@ -24,94 +29,33 @@ declare global {
   }
 }
 
-type Role = "admin" | "operator" | "user" | "viewer";
-type Screen =
-  | "dashboard"
-  | "mapa"
-  | "processos"
-  | "administrativo"
-  | "score"
-  | "peritos"
-  | "alertas"
-  | "coletas"
-  | "usuarios"
-  | "auditoria";
-
-type ApiUser = { id?: number; username: string; role: Role; regiao_foco?: string | null };
-type Processo = Record<string, any>;
-type Coleta = Record<string, any>;
-
-const ROLE_PERMISSIONS: Record<Role, string[]> = {
-  admin: ["read_data", "read_operational", "calculate_score", "create_perito", "run_collections", "manage_users", "view_audit"],
-  operator: ["read_data", "read_operational", "calculate_score", "create_perito", "run_collections"],
-  user: ["read_data", "calculate_score"],
-  viewer: ["read_data"]
-};
-
-const SCREEN_PERMISSIONS: Partial<Record<Screen, string>> = {
-  coletas: "read_operational",
-  usuarios: "manage_users",
-  auditoria: "view_audit"
-};
-
-const NAV = [
-  { section: "Inteligência", items: [
-    { id: "dashboard" as Screen, label: "Painel", icon: Activity },
-    { id: "mapa" as Screen, label: "Mapa Territorial", icon: Map },
-    { id: "processos" as Screen, label: "Radar de Processos", icon: Gavel },
-    { id: "administrativo" as Screen, label: "Radar Administrativo", icon: FileText }
-  ]},
-  { section: "Ferramentas", items: [
-    { id: "score" as Screen, label: "Calculadora Pericial", icon: Calculator },
-    { id: "peritos" as Screen, label: "Corpo Pericial", icon: Users },
-    { id: "alertas" as Screen, label: "Central de Alertas", icon: Bell }
-  ]},
-  { section: "Administração", items: [
-    { id: "coletas" as Screen, label: "Operação de Coletas", icon: Database, permission: "read_operational" },
-    { id: "usuarios" as Screen, label: "Usuários", icon: UserRoundCog, permission: "manage_users" },
-    { id: "auditoria" as Screen, label: "Auditoria", icon: Shield, permission: "view_audit" }
-  ]}
+const NAV: Array<{ section: string; items: NavItem[] }> = [
+  {
+    section: "Inteligência",
+    items: [
+      { id: "dashboard", label: "Painel", icon: Activity },
+      { id: "mapa", label: "Mapa Territorial", icon: Map },
+      { id: "processos", label: "Radar de Processos", icon: Gavel },
+      { id: "administrativo", label: "Radar Administrativo", icon: FileText }
+    ]
+  },
+  {
+    section: "Ferramentas",
+    items: [
+      { id: "score", label: "Calculadora Pericial", icon: Calculator },
+      { id: "peritos", label: "Corpo Pericial", icon: Users },
+      { id: "alertas", label: "Central de Alertas", icon: Bell }
+    ]
+  },
+  {
+    section: "Administração",
+    items: [
+      { id: "coletas", label: "Operação de Coletas", icon: Database, permission: "read_operational" },
+      { id: "usuarios", label: "Usuários", icon: UserRoundCog, permission: "manage_users" },
+      { id: "auditoria", label: "Auditoria", icon: Shield, permission: "view_audit" }
+    ]
+  }
 ];
-
-function fmt(value: any, digits = 0) {
-  const n = Number(value || 0);
-  return Number.isFinite(n) ? n.toLocaleString("pt-BR", { maximumFractionDigits: digits }) : "0";
-}
-
-function shortDate(value?: string | null) {
-  if (!value) return "--";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return String(value).slice(0, 16);
-  return d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
-}
-
-function scoreClass(score: any) {
-  const n = Number(score || 0);
-  if (n >= 75) return "critical";
-  if (n >= 50) return "high";
-  if (n >= 25) return "medium";
-  return "low";
-}
-
-function scoreLabel(faixa?: string) {
-  const map: Record<string, string> = {
-    janela_quente: "Janela quente",
-    provavel: "Provável perícia",
-    observacao: "Observação",
-    frio: "Frio"
-  };
-  return map[faixa || ""] || faixa || "Sem faixa";
-}
-
-function useLocalState<T>(key: string, initial: T) {
-  const [value, setValue] = React.useState<T>(() => {
-    const raw = localStorage.getItem(key);
-    if (!raw) return initial;
-    try { return JSON.parse(raw) as T; } catch { return initial; }
-  });
-  React.useEffect(() => localStorage.setItem(key, JSON.stringify(value)), [key, value]);
-  return [value, setValue] as const;
-}
 
 function App() {
   const [token, setToken] = useLocalState<string | null>("radar_token", null);
@@ -119,6 +63,7 @@ function App() {
   const [screen, setScreen] = React.useState<Screen>("dashboard");
   const [toast, setToast] = React.useState("");
   const [region, setRegion] = useLocalState<string>("radar_region", "");
+  const api = useApiClient(token, setToken, setUser);
 
   const hasPermission = React.useCallback((permission?: string) => {
     if (!permission) return true;
@@ -130,25 +75,6 @@ function App() {
     setToast(message);
     window.setTimeout(() => setToast(""), 2800);
   }, []);
-
-  const api = React.useMemo(() => ({
-    async request<T>(path: string, options: RequestInit = {}): Promise<T | null> {
-      const headers: Record<string, string> = { ...(options.headers as Record<string, string> || {}) };
-      if (token) headers.Authorization = `Bearer ${token}`;
-      if (options.body && !headers["Content-Type"]) headers["Content-Type"] = "application/json";
-      const response = await fetch(path, { ...options, headers });
-      if (response.status === 401) {
-        setToken(null);
-        setUser(null);
-        return null;
-      }
-      if (!response.ok) return null;
-      return response.json();
-    },
-    get<T>(path: string) { return this.request<T>(path); },
-    post<T>(path: string, body?: unknown) { return this.request<T>(path, { method: "POST", body: JSON.stringify(body || {}) }); },
-    patch<T>(path: string, body?: unknown) { return this.request<T>(path, { method: "PATCH", body: JSON.stringify(body || {}) }); }
-  }), [token, setToken, setUser]);
 
   React.useEffect(() => {
     if (!token) return;
@@ -180,7 +106,10 @@ function App() {
         region={region}
         setRegion={setRegion}
         hasPermission={hasPermission}
-        logout={() => { setToken(null); setUser(null); }}
+        logout={() => {
+          setToken(null);
+          setUser(null);
+        }}
       />
       <main className="workspace">
         {screen === "dashboard" && <Dashboard api={api} region={region} navigate={navigate} hasPermission={hasPermission} />}
@@ -199,7 +128,12 @@ function App() {
   );
 }
 
-function Login({ api, setToken, setUser, notify }: any) {
+function Login({ api, setToken, setUser, notify }: {
+  api: ApiClient;
+  setToken: (token: string | null) => void;
+  setUser: (user: ApiUser | null) => void;
+  notify: (message: string) => void;
+}) {
   const [username, setUsername] = React.useState("");
   const [password, setPassword] = React.useState("");
   const [loading, setLoading] = React.useState(false);
@@ -232,7 +166,15 @@ function Login({ api, setToken, setUser, notify }: any) {
   );
 }
 
-function Sidebar({ screen, navigate, user, region, setRegion, hasPermission, logout }: any) {
+function Sidebar({ screen, navigate, user, region, setRegion, hasPermission, logout }: {
+  screen: Screen;
+  navigate: (screen: Screen) => void;
+  user: ApiUser;
+  region: string;
+  setRegion: (region: string) => void;
+  hasPermission: (permission?: string) => boolean;
+  logout: () => void;
+}) {
   return (
     <aside className="sidebar-global">
       <div className="brand">
@@ -243,7 +185,7 @@ function Sidebar({ screen, navigate, user, region, setRegion, hasPermission, log
         {NAV.map((group) => (
           <div key={group.section} className="nav-group">
             <div className="nav-section">{group.section}</div>
-            {group.items.filter((item: any) => hasPermission(item.permission)).map((item: any) => {
+            {group.items.filter((item) => hasPermission(item.permission)).map((item) => {
               const Icon = item.icon;
               return (
                 <button key={item.id} className={screen === item.id ? "active" : ""} onClick={() => navigate(item.id)}>
@@ -272,13 +214,18 @@ function Sidebar({ screen, navigate, user, region, setRegion, hasPermission, log
   );
 }
 
-function Page({ title, subtitle, action, children }: any) {
+function Page({ title, subtitle, action, children }: {
+  title: string;
+  subtitle?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section className="page">
       <header className="page-header">
         <div>
           <h1>{title}</h1>
-          <p>{subtitle}</p>
+          {subtitle && <p>{subtitle}</p>}
         </div>
         {action}
       </header>
@@ -287,46 +234,55 @@ function Page({ title, subtitle, action, children }: any) {
   );
 }
 
-function Dashboard({ api, region, navigate, hasPermission }: any) {
+function Dashboard({ api, region, navigate, hasPermission }: {
+  api: ApiClient;
+  region: string;
+  navigate: (screen: Screen) => void;
+  hasPermission: (permission?: string) => boolean;
+}) {
   const [stats, setStats] = React.useState<any>(null);
   const [processos, setProcessos] = React.useState<Processo[]>([]);
-  const [coletas, setColetas] = React.useState<Coleta[]>([]);
+  const [coletasResumo, setColetasResumo] = React.useState<Coleta[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
   async function load() {
+    setLoading(true);
     const suffix = region ? `?regiao=${encodeURIComponent(region)}` : "";
     const qs = `?faixa=janela_quente&limit=4${region ? `&regiao=${encodeURIComponent(region)}` : ""}`;
     const [s, p, c] = await Promise.all([
       api.get<any>(`/api/stats${suffix}`),
       api.get<any>(`/api/processos${qs}`),
-      hasPermission("read_operational") ? api.get<any>("/api/coletas/status?limit=8") : Promise.resolve(null)
+      hasPermission("read_operational") ? api.get<any>("/api/coletas/resumo") : Promise.resolve(null)
     ]);
     setStats(s);
     setProcessos(p?.items || []);
-    setColetas(c?.items || []);
+    setColetasResumo(c?.items || []);
+    setLoading(false);
   }
 
   React.useEffect(() => { load(); }, [region]);
 
-  const failed = coletas.filter((c) => c.status === "failed").length;
-  const running = coletas.filter((c) => c.status === "running").length;
+  const failed = coletasResumo.filter((c) => c.ultimo_status === "failed").length;
+  const running = coletasResumo.filter((c) => c.em_execucao).length;
+  const last = coletasResumo[0];
 
   return (
     <Page title="Painel de Inteligência Pericial" subtitle={region ? `Foco regional: ${region}` : "Mato Grosso inteiro"} action={<button onClick={load}><RefreshCw size={14} /> Atualizar</button>}>
       <div className="metrics">
-        <Metric label="Processos" value={fmt(stats?.total_processos)} />
-        <Metric label="Janela quente" value={fmt(stats?.processos_quentes)} tone="critical" />
-        <Metric label="Provável perícia" value={fmt(stats?.processos_provaveis)} tone="high" />
-        <Metric label="Imóveis SIGEF" value={fmt(stats?.total_parcelas)} />
-        <Metric label="Portarias D.O." value={fmt(stats?.total_portarias)} />
-        <Metric label="Alertas" value={fmt(stats?.processos_quentes)} />
+        <Metric label="Processos" value={loading ? "..." : fmt(stats?.total_processos)} />
+        <Metric label="Janela quente" value={loading ? "..." : fmt(stats?.processos_quentes)} tone="critical" />
+        <Metric label="Provável perícia" value={loading ? "..." : fmt(stats?.processos_provaveis)} tone="high" />
+        <Metric label="Imóveis SIGEF" value={loading ? "..." : fmt(stats?.total_parcelas)} />
+        <Metric label="Portarias D.O." value={loading ? "..." : fmt(stats?.total_portarias)} />
+        <Metric label="Alertas" value={loading ? "..." : fmt(stats?.processos_quentes)} />
       </div>
       {hasPermission("read_operational") && (
         <div className="card">
           <div className="card-title">Saúde das coletas</div>
           <div className="health-grid">
             <StatusBlock label="Operação" value={failed ? `${failed} falha(s)` : running ? `${running} em execução` : "Estável"} tone={failed ? "critical" : running ? "medium" : "high"} />
-            <StatusBlock label="Última coleta" value={coletas[0] ? `${coletas[0].fonte} · ${shortDate(coletas[0].iniciado_em)}` : "Sem registro"} />
-            <StatusBlock label="DataJud" value="Pode demorar por limite da API externa" />
+            <StatusBlock label="Última coleta" value={last ? `${last.fonte} · ${shortDate(last.ultima_execucao)}` : "Sem registro"} />
+            <StatusBlock label="DataJud" value={coletasResumo.find((c) => c.fonte === "judicial")?.mensagem_operacional || "Monitorado"} />
             <button className="secondary" onClick={() => navigate("coletas")}>Abrir operação de coletas</button>
           </div>
         </div>
@@ -351,11 +307,11 @@ function Dashboard({ api, region, navigate, hasPermission }: any) {
   );
 }
 
-function Metric({ label, value, tone }: any) {
+function Metric({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return <div className={`metric ${tone || ""}`}><span>{label}</span><strong>{value}</strong></div>;
 }
 
-function StatusBlock({ label, value, tone }: any) {
+function StatusBlock({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return <div className={`status-block ${tone || ""}`}><span>{label}</span><strong>{value}</strong></div>;
 }
 
@@ -375,7 +331,7 @@ function ProcessCard({ processo }: { processo: Processo }) {
   );
 }
 
-function Processos({ api, region }: any) {
+function Processos({ api, region }: { api: ApiClient; region: string }) {
   const [items, setItems] = React.useState<Processo[]>([]);
   const [total, setTotal] = React.useState(0);
   const [filters, setFilters] = React.useState({ faixa: "", regiao: "", municipio: "", classe: "" });
@@ -402,7 +358,10 @@ function Processos({ api, region }: any) {
   );
 }
 
-function FilterBar({ filters, setFilters }: any) {
+function FilterBar({ filters, setFilters }: {
+  filters: { faixa: string; regiao: string; municipio: string; classe: string };
+  setFilters: React.Dispatch<React.SetStateAction<{ faixa: string; regiao: string; municipio: string; classe: string }>>;
+}) {
   return (
     <div className="filters">
       <select value={filters.faixa} onChange={(e) => setFilters({ ...filters, faixa: e.target.value })}>
@@ -422,7 +381,11 @@ function FilterBar({ filters, setFilters }: any) {
   );
 }
 
-function Coletas({ api, hasPermission, notify }: any) {
+function Coletas({ api, hasPermission, notify }: {
+  api: ApiClient;
+  hasPermission: (permission?: string) => boolean;
+  notify: (message: string) => void;
+}) {
   const [items, setItems] = React.useState<Coleta[]>([]);
   async function load() {
     const data = await api.get<any>("/api/coletas/status?limit=50");
@@ -470,16 +433,7 @@ function Badge({ status }: { status?: string }) {
   return <span className={`badge ${cls}`}>{label}</span>;
 }
 
-function friendlyError(error?: string) {
-  if (!error) return "--";
-  const lower = error.toLowerCase();
-  if (lower.includes("429")) return "Limite da fonte externa. Aguarde antes de tentar novamente.";
-  if (lower.includes("401") || lower.includes("apikey")) return "Chave da API inválida ou ausente.";
-  if (lower.includes("timeout") || lower.includes("timed out")) return "A fonte externa demorou para responder.";
-  return error.slice(0, 160);
-}
-
-function ScoreCalculator({ api, hasPermission }: any) {
+function ScoreCalculator({ api, hasPermission }: { api: ApiClient; hasPermission: (permission?: string) => boolean }) {
   const [classe, setClasse] = React.useState("");
   const [assunto, setAssunto] = React.useState("");
   const [texto, setTexto] = React.useState("");
@@ -502,30 +456,34 @@ function ScoreCalculator({ api, hasPermission }: any) {
   );
 }
 
-function SimpleListScreen({ title, subtitle, endpoint, render }: any) {
+function SimpleListScreen({ title, subtitle, endpoint, render }: {
+  title: string;
+  subtitle: string;
+  endpoint: { api: ApiClient; path: string };
+  render: (item: any, index: number) => React.ReactNode;
+}) {
   const [items, setItems] = React.useState<any[]>([]);
-  const [apiRef] = React.useState(() => endpoint.api);
   async function load() {
-    const data = await apiRef.get<any>(endpoint.path);
+    const data = await endpoint.api.get<any>(endpoint.path);
     setItems(data?.items || data || []);
   }
   React.useEffect(() => { load(); }, []);
   return <Page title={title} subtitle={subtitle} action={<button onClick={load}><RefreshCw size={14} /> Atualizar</button>}><div className="stack">{items.length ? items.map(render) : <Empty text="Nenhum registro encontrado." />}</div></Page>;
 }
 
-function Administrativo({ api }: any) {
-  return <SimpleListScreen title="Radar Administrativo" subtitle="Eventos administrativos relevantes" endpoint={{ api, path: "/api/eventos?limit=50&dias=90" }} render={(e: any, i: number) => <CardLine key={i} title={e.titulo || e.descricao || e.fonte} meta={`${e.fonte || ""} · ${e.municipio || ""}`} />} />;
+function Administrativo({ api }: { api: ApiClient }) {
+  return <SimpleListScreen title="Radar Administrativo" subtitle="Eventos administrativos relevantes" endpoint={{ api, path: "/api/eventos?limit=50&dias=90" }} render={(e, i) => <CardLine key={i} title={e.titulo || e.descricao || e.fonte} meta={`${e.fonte || ""} · ${e.municipio || ""}`} />} />;
 }
 
-function Peritos({ api }: any) {
-  return <SimpleListScreen title="Corpo Pericial" subtitle="Profissionais cadastrados" endpoint={{ api, path: "/api/peritos" }} render={(p: any, i: number) => <CardLine key={i} title={p.nome || "Profissional"} meta={`${p.registro_profissional || ""} · ${p.regiao_imea || ""}`} />} />;
+function Peritos({ api }: { api: ApiClient }) {
+  return <SimpleListScreen title="Corpo Pericial" subtitle="Profissionais cadastrados" endpoint={{ api, path: "/api/peritos" }} render={(p, i) => <CardLine key={i} title={p.nome || "Profissional"} meta={`${p.registro_profissional || ""} · ${p.regiao_imea || ""}`} />} />;
 }
 
-function Alertas({ api }: any) {
-  return <SimpleListScreen title="Central de Alertas" subtitle="Eventos e oportunidades recentes" endpoint={{ api, path: "/api/alertas?limit=40" }} render={(a: any, i: number) => <CardLine key={i} title={a.titulo || a.orgao || "Alerta"} meta={`${a.fonte || ""} · Score ${a.score_evento || a.score_total || 0}`} />} />;
+function Alertas({ api }: { api: ApiClient }) {
+  return <SimpleListScreen title="Central de Alertas" subtitle="Eventos e oportunidades recentes" endpoint={{ api, path: "/api/alertas?limit=40" }} render={(a, i) => <CardLine key={i} title={a.titulo || a.orgao || "Alerta"} meta={`${a.fonte || ""} · Score ${a.score_evento || a.score_total || 0}`} />} />;
 }
 
-function MapScreen({ api, region }: any) {
+function MapScreen({ api, region }: { api: ApiClient; region: string }) {
   const mapRef = React.useRef<HTMLDivElement | null>(null);
   const mapInstance = React.useRef<any>(null);
   const [count, setCount] = React.useState(0);
@@ -616,7 +574,11 @@ function MapScreen({ api, region }: any) {
   );
 }
 
-function Usuarios({ api, hasPermission, notify }: any) {
+function Usuarios({ api, hasPermission, notify }: {
+  api: ApiClient;
+  hasPermission: (permission?: string) => boolean;
+  notify: (message: string) => void;
+}) {
   const [items, setItems] = React.useState<any[]>([]);
   async function load() {
     if (!hasPermission("manage_users")) return;
@@ -634,7 +596,7 @@ function Usuarios({ api, hasPermission, notify }: any) {
       <DataTable headers={["ID", "Usuário", "Role", "Status", "Região", "Criado em"]}>
         {items.map((u) => <tr key={u.id}>
           <td>{u.id}</td><td>{u.username}</td>
-          <td><select value={u.role} onChange={(e) => changeRole(u.id, e.target.value)}>{["admin","operator","user","viewer"].map((r) => <option key={r}>{r}</option>)}</select></td>
+          <td><select value={u.role} onChange={(e) => changeRole(u.id, e.target.value)}>{["admin", "operator", "user", "viewer"].map((r) => <option key={r}>{r}</option>)}</select></td>
           <td>{u.ativo ? "ativo" : "inativo"}</td><td>{u.regiao_foco || "--"}</td><td>{shortDate(u.criado_em)}</td>
         </tr>)}
       </DataTable>
@@ -642,7 +604,7 @@ function Usuarios({ api, hasPermission, notify }: any) {
   );
 }
 
-function Auditoria({ api }: any) {
+function Auditoria({ api }: { api: ApiClient }) {
   const [items, setItems] = React.useState<any[]>([]);
   async function load() {
     const data = await api.get<any>("/api/admin/auditoria?limit=100");
@@ -658,11 +620,11 @@ function Auditoria({ api }: any) {
   );
 }
 
-function DataTable({ headers, children }: any) {
-  return <div className="table-wrap"><table><thead><tr>{headers.map((h: string) => <th key={h}>{h}</th>)}</tr></thead><tbody>{children}</tbody></table></div>;
+function DataTable({ headers, children }: { headers: string[]; children: React.ReactNode }) {
+  return <div className="table-wrap"><table><thead><tr>{headers.map((h) => <th key={h}>{h}</th>)}</tr></thead><tbody>{children}</tbody></table></div>;
 }
 
-function CardLine({ title, meta }: any) {
+function CardLine({ title, meta }: { title?: string; meta?: string }) {
   return <div className="card-line"><strong>{title || "Sem título"}</strong><span>{meta || "Sem metadados"}</span></div>;
 }
 

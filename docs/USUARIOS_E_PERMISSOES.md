@@ -47,6 +47,7 @@ Em producao:
 | `PATCH /api/admin/usuarios/{user_id}/senha` | `manage_users` |
 | `GET /api/admin/auditoria` | `view_audit` |
 | `GET /api/coletas/status` | `read_operational` |
+| `GET /api/coletas/resumo` | `read_operational` |
 | `POST /api/coletas/{tipo}/executar` | `run_collections` |
 | `POST /api/peritos` | `create_perito` |
 | `GET /api/me` | usuario autenticado |
@@ -54,7 +55,7 @@ Em producao:
 
 ## Tela administrativa
 
-A interface web possui a tela `Usuarios`, acessivel pela barra superior. Ela
+A interface web possui a tela `Usuarios`, acessivel pela sidebar principal. Ela
 permite:
 
 - listar usuarios;
@@ -74,8 +75,8 @@ Quando a pagina e reaberta com token salvo, a interface consulta `GET /api/me`.
 
 A UI usa a matriz de permissoes para:
 
-- mostrar o perfil atual na barra superior;
-- ocultar menu `Operacao` para quem nao possui `read_operational`;
+- mostrar o perfil atual na sidebar;
+- ocultar menu `Operacao de Coletas` para quem nao possui `read_operational`;
 - ocultar menu `Usuarios` para quem nao possui `manage_users`;
 - ocultar menu `Auditoria` para quem nao possui `view_audit`;
 - ocultar botoes de disparo manual para quem nao possui `run_collections`;

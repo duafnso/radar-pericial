@@ -11,6 +11,39 @@ Redis como servicos externos ou gerenciados.
   `worker` e `beat`.
 - `.env.example`: modelo seguro de variaveis de ambiente.
 - `.dockerignore`: impede envio de segredos, caches e artefatos para o build.
+- `frontend/`: aplicacao React/Vite/TypeScript.
+- `interface/templates/index.html` e `interface/static/assets/`: frontend
+  compilado e servido pelo FastAPI.
+
+## Build da aplicacao
+
+O Dockerfile executa o build completo do frontend em um estagio separado com
+Node.js:
+
+1. instala dependencias com `npm ci`;
+2. executa `npm run frontend:build`;
+3. sincroniza o resultado para `interface/templates/index.html` e
+   `interface/static/assets`;
+4. copia apenas backend Python e assets compilados para a imagem final.
+
+Com isso, uma maquina limpa nao precisa executar build manual antes do Docker.
+Use:
+
+```bash
+docker compose up -d --build
+```
+
+Para desenvolvimento local do frontend:
+
+```bash
+npm run frontend:dev
+```
+
+Para gerar os assets que o FastAPI serve localmente:
+
+```bash
+npm run frontend:build
+```
 
 ## Servicos em producao
 
@@ -101,9 +134,34 @@ Use:
 - `/health` para liveness publico.
 - `/health/ready` para readiness com banco, Redis e Celery.
 - `/api/health` apenas para validar sessao autenticada.
+- `/api/coletas/resumo` para validar a saude operacional das coletas.
 
 O healthcheck do container `web` usa `/health`, porque `/api/health` exige
 token.
+
+## Smoke test autenticado
+
+Depois do deploy, valide em ordem:
+
+```bash
+curl http://localhost:8000/health
+curl http://localhost:8000/health/ready
+curl http://localhost:8000/
+```
+
+Em seguida faca login com o usuario admin inicial e use o token Bearer para:
+
+```bash
+curl -H "Authorization: Bearer <token>" http://localhost:8000/api/me
+curl -H "Authorization: Bearer <token>" http://localhost:8000/api/stats
+curl -H "Authorization: Bearer <token>" "http://localhost:8000/api/processos?limit=5"
+curl -H "Authorization: Bearer <token>" "http://localhost:8000/api/coletas/status?limit=5"
+curl -H "Authorization: Bearer <token>" http://localhost:8000/api/coletas/resumo
+```
+
+O endpoint `/api/coletas/resumo` deve retornar um resumo por fonte com ultimo
+status, ultima execucao, registros salvos, falha resumida e indicador de tarefa
+em execucao.
 
 ## Checklist antes de publicar
 
@@ -113,7 +171,10 @@ token.
 - `CORS_ALLOW_ORIGINS` com dominio real.
 - Banco PostGIS com backup automatico.
 - Redis sem porta publica aberta.
+- Retencao de logs definida na plataforma.
+- Dominio e HTTPS configurados.
 - `ENABLE_API_DOCS=false`, salvo em staging controlado.
 - Primeiro usuario admin criado por `DEFAULT_ADMIN_PASSWORD` temporario.
 - Senha admin trocada depois do primeiro login.
+- Teste de coleta judicial executado com a chave DataJud real.
 - Logs de `web`, `worker` e `beat` verificados.

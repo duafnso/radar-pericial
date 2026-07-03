@@ -1,0 +1,10 @@
+import { AlertTriangle } from "lucide-react";
+
+export function Empty({ text }: { text: string }) {
+  return (
+    <div className="empty">
+      <AlertTriangle size={20} />
+      <span>{text}</span>
+    </div>
+  );
+}

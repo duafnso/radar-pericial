@@ -163,6 +163,16 @@ O endpoint `/api/coletas/resumo` deve retornar um resumo por fonte com ultimo
 status, ultima execucao, registros salvos, falha resumida e indicador de tarefa
 em execucao.
 
+Tambem existe um smoke test automatizado:
+
+```bash
+RADAR_SMOKE_PASSWORD='senha-admin' python tools/smoke_test.py --base-url http://localhost:8000
+```
+
+Ele valida health, readiness, HTML do frontend, asset estatico, login,
+`/api/me`, `/api/stats`, `/api/processos`, `/api/coletas/status` e
+`/api/coletas/resumo`.
+
 ## Checklist antes de publicar
 
 - `.env` e `.env.txt` removidos do Git.

@@ -390,7 +390,9 @@ class Database:
         CREATE INDEX IF NOT EXISTS idx_auditoria_eventos_acao
             ON auditoria_eventos(acao, criado_em DESC);
         """
+        lock_key = 83476201
         with self.engine.connect() as conn:
+            conn.execute(text("SELECT pg_advisory_xact_lock(:lock_key)"), {"lock_key": lock_key})
             conn.execute(text(sql))
             default_admin_password = os.getenv("DEFAULT_ADMIN_PASSWORD")
             if default_admin_password:

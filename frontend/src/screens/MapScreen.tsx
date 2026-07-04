@@ -101,10 +101,15 @@ export function MapScreen({ api, region }: { api: ApiClient; region: string }) {
       markerLayer.current = L.layerGroup().addTo(mapInstance.current);
       const pinIcon = L.divIcon({
         className: "process-pin",
-        html: "<span></span>",
-        iconSize: [28, 36],
-        iconAnchor: [14, 32],
-        popupAnchor: [0, -30]
+        html: `
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 2.75c-4.05 0-7.25 3.12-7.25 7.05 0 4.91 5.72 10.37 6.78 11.33a.7.7 0 0 0 .94 0c1.06-.96 6.78-6.42 6.78-11.33 0-3.93-3.2-7.05-7.25-7.05Z" />
+            <circle cx="12" cy="9.8" r="2.55" />
+          </svg>
+        `,
+        iconSize: [21, 27],
+        iconAnchor: [10.5, 25],
+        popupAnchor: [0, -24]
       });
       const bounds: any[] = [];
       nextItems.forEach((processo: Processo) => {

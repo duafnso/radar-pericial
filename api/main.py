@@ -1,6 +1,6 @@
-"""
-api/main.py — Radar Pericial v2
-FastAPI: serve o HTML, expõe REST API com dados reais do banco PostGIS
+﻿"""
+api/main.py â€” Radar Pericial v2
+FastAPI: serve o HTML, expÃµe REST API com dados reais do banco PostGIS
 e carrega dados demo automaticamente no startup (se configurado).
 """
 
@@ -15,7 +15,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Optional
 
-# ── Logger definido ANTES de qualquer uso ──────────────────────────────────
+# â”€â”€ Logger definido ANTES de qualquer uso â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=logging.INFO,
@@ -23,58 +23,58 @@ logging.basicConfig(
     stream=sys.stdout
 )
 
-# ── Signal handler (apenas log, não interfere no shutdown) ─────────────────
+# â”€â”€ Signal handler (apenas log, nÃ£o interfere no shutdown) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _signal_handler(signum, frame):
-    """Handler para sinais - apenas loga, não impede shutdown do Railway"""
-    logger.info(f"🚨 [SIGNAL {signum}] Health check ou shutdown solicitado")
+    """Handler para sinais - apenas loga, nÃ£o impede shutdown do Railway"""
+    logger.info("[SIGNAL %s] Health check ou shutdown solicitado", signum)
 
 try:
     signal.signal(signal.SIGTERM, _signal_handler)
     signal.signal(signal.SIGINT, _signal_handler)
 except Exception as e:
-    logger.warning(f"⚠️ Não foi possível registrar signal handlers: {e}")
+    logger.warning("Nao foi possivel registrar signal handlers: %s", e)
 
-# ── Imports do FastAPI e dependências ─────────────────────────────────────
+# â”€â”€ Imports do FastAPI e dependÃªncias â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-# ── Configuração de caminhos ──────────────────────────────────────────────
+# â”€â”€ ConfiguraÃ§Ã£o de caminhos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 BASE_DIR = Path(__file__).parent.parent
 sys.path.insert(0, str(BASE_DIR))
 
-# ── Imports do projeto ────────────────────────────────────────────────────
+# â”€â”€ Imports do projeto â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 from database.db import Database, init_db
 from intelligence.taxonomy import calcular_score, TAXONOMIA, REGIOES_IMEA
 
-# ── Instância global do banco ─────────────────────────────────────────────
+# â”€â”€ InstÃ¢ncia global do banco â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _db: Optional[Database] = None
 _LOGIN_FAILURES: dict[str, list[float]] = {}
 
 
-# ── Carregamento Automático de Dados Demo ──────────────────────────────────
+# â”€â”€ Carregamento AutomÃ¡tico de Dados Demo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async def _run_demo_collection():
     """
     Executa coleta de dados demo automaticamente no startup.
-    Controlado pela variável de ambiente LOAD_DEMO_DATA=true
+    Controlado pela variÃ¡vel de ambiente LOAD_DEMO_DATA=true
     """
     if os.getenv("LOAD_DEMO_DATA", "").lower() != "true":
-        logger.info("ℹ️  LOAD_DEMO_DATA desativado - pulando dados demo")
+        logger.info("LOAD_DEMO_DATA desativado - pulando dados demo")
         return
     
-    logger.info("🔄 LOAD_DEMO_DATA ativado - iniciando coleta demo automática...")
+    logger.info("LOAD_DEMO_DATA ativado - iniciando coleta demo automatica...")
     
     try:
-        # ✅ Aponta para o arquivo correto que gera os dados demo solicitados
+        # Aponta para o arquivo correto que gera os dados demo solicitados.
         demo_script = BASE_DIR / "working_data_collector.py"
         
         if not demo_script.exists():
-            logger.warning(f"⚠️  working_data_collector.py não encontrado em: {demo_script}")
+            logger.warning("working_data_collector.py nao encontrado em: %s", demo_script)
             return
         
-        # Executa em thread separada para não bloquear o event loop do FastAPI
+        # Executa em thread separada para nÃ£o bloquear o event loop do FastAPI
         result = await asyncio.to_thread(
             subprocess.run,
             [sys.executable, str(demo_script), "--source", "demo"],
@@ -85,49 +85,61 @@ async def _run_demo_collection():
         )
         
         if result.returncode == 0:
-            logger.info("✅ Dados demo carregados com sucesso!")
-            # Loga as últimas linhas relevantes
+            logger.info("Dados demo carregados com sucesso.")
+            # Loga as Ãºltimas linhas relevantes
             for line in result.stdout.strip().split('\n')[-10:]:
                 if line.strip():
                     logger.info(f"   {line}")
         else:
-            logger.error(f"❌ Erro na coleta demo: {result.stderr[-500:]}")
+            logger.error("Erro na coleta demo: %s", result.stderr[-500:])
             
     except subprocess.TimeoutExpired:
-        logger.error("⏱️  Timeout na coleta demo (300s)")
+        logger.error("Timeout na coleta demo (300s)")
     except FileNotFoundError:
-        logger.error("❌ Python ou script não encontrado no ambiente")
+        logger.error("Python ou script nao encontrado no ambiente.")
     except Exception as e:
-        logger.error(f"❌ Exceção ao carregar dados demo: {type(e).__name__}: {e}")
+        logger.error("Excecao ao carregar dados demo: %s: %s", type(e).__name__, e)
 
 
-# ── Lifespan: inicialização única do banco + demo ─────────────────────────
+# â”€â”€ Lifespan: inicializaÃ§Ã£o Ãºnica do banco + demo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Inicializa o banco UMA VEZ no startup + dados demo (opcional)."""
     global _db
-    logger.info("🚀 [LIFESPAN] Iniciando aplicação...")
+    logger.info("[LIFESPAN] Iniciando aplicacao...")
     
     try:
         # 1. Inicializa o banco de dados
         init_db()
         _db = Database()
-        logger.info("✅ [LIFESPAN] Banco conectado e schema inicializado")
+        logger.info("[LIFESPAN] Banco conectado e schema inicializado")
+        try:
+            removed_sessions = _db.cleanup_expired_sessions()
+            if removed_sessions:
+                logger.info(
+                    "[LIFESPAN] Sessoes expiradas removidas: %s",
+                    removed_sessions,
+                )
+        except Exception as cleanup_error:
+            logger.warning(
+                "[LIFESPAN] Falha ao limpar sessoes expiradas: %s",
+                cleanup_error,
+            )
         
         # 2. Carrega dados demo automaticamente (se configurado)
         await _run_demo_collection()
         
-        logger.info("✅ [LIFESPAN] API pronta para requests!")
+        logger.info("[LIFESPAN] API pronta para requests!")
         
     except Exception as e:
-        logger.error(f"❌ [LIFESPAN] Falha crítica no startup: {e}")
+        logger.error("[LIFESPAN] Falha critica no startup: %s", e)
         raise  # Re-raise para o Railway detectar falha
     
-    yield  # ← ESSENCIAL: mantém o app rodando
-    logger.info("🛑 [LIFESPAN] Encerrando aplicação...")
+    yield  # â† ESSENCIAL: mantÃ©m o app rodando
+    logger.info("[LIFESPAN] Encerrando aplicacao...")
 
 
-# ── Criação da aplicação FastAPI ──────────────────────────────────────────
+# â”€â”€ CriaÃ§Ã£o da aplicaÃ§Ã£o FastAPI â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _is_production() -> bool:
     return os.getenv("APP_ENV", os.getenv("ENV", "development")).strip().lower() in {
         "prod",
@@ -146,11 +158,11 @@ def _parse_cors_origins() -> list[str]:
     raw = os.getenv("CORS_ALLOW_ORIGINS")
     if raw is None:
         if _is_production():
-            raise RuntimeError("CORS_ALLOW_ORIGINS deve ser definido em produção.")
+            raise RuntimeError("CORS_ALLOW_ORIGINS deve ser definido em produÃ§Ã£o.")
         return ["http://localhost:8000", "http://127.0.0.1:8000"]
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
     if _is_production() and "*" in origins:
-        raise RuntimeError("CORS_ALLOW_ORIGINS não pode conter '*' em produção.")
+        raise RuntimeError("CORS_ALLOW_ORIGINS nÃ£o pode conter '*' em produÃ§Ã£o.")
     return origins
 
 
@@ -221,7 +233,7 @@ app.add_middleware(
 )
 
 
-# ── Health Checks para Railway (SEM autenticação, respondem em <100ms) ───
+# â”€â”€ Health Checks para Railway (SEM autenticaÃ§Ã£o, respondem em <100ms) â”€â”€â”€
 @app.middleware("http")
 async def security_headers(request, call_next):
     response = await call_next(request)
@@ -239,23 +251,23 @@ async def security_headers(request, call_next):
 
 @app.get("/health")
 async def railway_health():
-    """Health check mínimo para Railway — SEM query no banco"""
+    """Health check mÃ­nimo para Railway â€” SEM query no banco"""
     return {"status": "healthy", "service": "radar-pericial"}
 
 @app.get("/health/live")
 async def liveness():
-    """Liveness probe: verifica se a aplicação está viva."""
+    """Liveness probe: verifica se a aplicaÃ§Ã£o estÃ¡ viva."""
     return {"status": "alive", "service": "radar-pericial"}
 
 @app.get("/health/ready")
 async def readiness():
-    """Readiness probe: verifica dependências essenciais."""
+    """Readiness probe: verifica dependÃªncias essenciais."""
     deps = {"database": False, "redis": False, "celery": False}
     details = {}
 
     try:
         if not _db:
-            raise RuntimeError("Database não inicializado")
+            raise RuntimeError("Database nÃ£o inicializado")
         _db.query("SELECT 1")
         deps["database"] = True
     except Exception as e:
@@ -289,66 +301,65 @@ async def readiness():
 
 @app.get("/")
 async def root():
-    """Rota raiz: serve HTML se existir, senão retorna JSON"""
+    """Rota raiz: serve HTML se existir, senao retorna JSON."""
     possible_paths = [
         BASE_DIR / "interface" / "templates" / "index.html",
         Path("/app/interface/templates/index.html"),
         Path(__file__).parent.parent.parent / "interface" / "templates" / "index.html",
     ]
-    
+
     for html_path in possible_paths:
         if html_path.exists():
             try:
                 html_content = html_path.read_text(encoding="utf-8")
-                logger.info(f"✅ index.html servido de: {html_path}")
+                logger.info("index.html servido de: %s", html_path)
                 return HTMLResponse(content=html_content, media_type="text/html")
             except Exception as e:
-                logger.error(f"❌ Erro ao ler index.html em {html_path}: {e}")
+                logger.error("Erro ao ler index.html em %s: %s", html_path, e)
                 break
-    
-    logger.warning("⚠️ index.html não encontrado - retornando JSON")
+
+    logger.warning("index.html nao encontrado - retornando JSON")
     return JSONResponse({
-        "message": "🚀 Radar Pericial API está rodando!",
+        "message": "Radar Pericial API esta rodando.",
         "docs": "/docs",
         "health": "/health",
         "status": "API ativa"
     })
-
 @app.get("/index.html", response_class=HTMLResponse)
 async def index_html():
     """Redireciona index.html para a rota raiz"""
     return await root()
 
 
-# ── Middleware de log de requests (opcional, útil para debug) ─────────────
+# â”€â”€ Middleware de log de requests (opcional, Ãºtil para debug) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.middleware("http")
 async def log_requests(request, call_next):
     path = request.url.path
     if path not in ["/health", "/", "/docs", "/openapi.json", "/redoc"]:
-        logger.info(f"📥 {request.method} {path}")
+        logger.info("request %s %s", request.method, path)
     response = await call_next(request)
     if path not in ["/health", "/", "/docs", "/openapi.json", "/redoc"]:
-        logger.info(f"📤 {request.method} {path} → {response.status_code}")
+        logger.info("response %s %s -> %s", request.method, path, response.status_code)
     return response
 
 
-# ── Static files ──────────────────────────────────────────────────────────
+# â”€â”€ Static files â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 static_dir = BASE_DIR / "interface" / "static"
 static_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
-# ── Dependência de autenticação ───────────────────────────────────────────
+# â”€â”€ DependÃªncia de autenticaÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def get_current_user(
     request: Request,
     authorization: Annotated[Optional[str], Header()] = None,
 ) -> dict:
-    """Valida token Bearer. Lança 401 se inválido."""
+    """Valida token Bearer. LanÃ§a 401 se invÃ¡lido."""
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Token de autenticação não fornecido")
+        raise HTTPException(status_code=401, detail="Token de autenticaÃ§Ã£o nÃ£o fornecido")
     token = authorization.split(" ", 1)[1].strip()
     if not _db:
-        raise HTTPException(status_code=503, detail="Banco de dados não inicializado")
+        raise HTTPException(status_code=503, detail="Banco de dados nÃ£o inicializado")
     client_ip = request.client.host if request.client else None
     user = _db.validate_token_user(
         token,
@@ -356,7 +367,7 @@ def get_current_user(
         client_ip=client_ip,
     )
     if not user:
-        raise HTTPException(status_code=401, detail="Token inválido ou expirado")
+        raise HTTPException(status_code=401, detail="Token invÃ¡lido ou expirado")
     return user
 
 AuthUser = Annotated[dict, Depends(get_current_user)]
@@ -440,7 +451,7 @@ def _audit_request(
     )
 
 
-# ── Modelos Pydantic ──────────────────────────────────────────────────────
+# â”€â”€ Modelos Pydantic â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 class LoginInput(BaseModel):
     username: str
     password: str
@@ -480,7 +491,7 @@ class TrocarSenhaInput(BaseModel):
     nova_senha: str
 
 
-# ── Autenticação ─────────────────────────────────────────────────────────
+# â”€â”€ AutenticaÃ§Ã£o â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.post("/api/login")
 async def login(body: LoginInput, request: Request):
     username = body.username.strip().lower()
@@ -561,9 +572,9 @@ async def logout(
     authorization: Annotated[Optional[str], Header()] = None,
 ):
     if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Token de autenticação não fornecido")
+        raise HTTPException(status_code=401, detail="Token de autenticaÃ§Ã£o nÃ£o fornecido")
     if not _db:
-        raise HTTPException(status_code=503, detail="Banco de dados não inicializado")
+        raise HTTPException(status_code=503, detail="Banco de dados nÃ£o inicializado")
     token = authorization.split(" ", 1)[1].strip()
     _db.revoke_token(token)
     _audit_request(request, "logout", ator=_user, entidade="usuario", entidade_id=_user.get("id"))
@@ -571,7 +582,7 @@ async def logout(
 
 @app.get("/api/health")
 async def api_health(_user: AuthUser):
-    """Health check da API — requer autenticação"""
+    """Health check da API â€” requer autenticaÃ§Ã£o"""
     return {
         "status": "ok",
         "service": "Radar Pericial v2",
@@ -582,7 +593,7 @@ async def api_health(_user: AuthUser):
     }
 
 
-# ── Stats ────────────────────────────────────────────────────────────────
+# â”€â”€ Stats â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/api/stats")
 async def stats(regiao: Optional[str] = Query(None), _user: AuthUser = None):
     try:
@@ -594,7 +605,7 @@ async def stats(regiao: Optional[str] = Query(None), _user: AuthUser = None):
         return {}
 
 
-# ── Processos ────────────────────────────────────────────────────────────
+# â”€â”€ Processos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/api/processos")
 async def processos(
     faixa: Optional[str] = Query(None), municipio: Optional[str] = Query(None),
@@ -628,7 +639,7 @@ async def processos(
         return {"total": 0, "items": []}
 
 
-# ── Eventos / Portarias ─────────────────────────────────────────────────
+# â”€â”€ Eventos / Portarias â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/api/eventos")
 async def eventos(
     municipio: Optional[str] = Query(None), faixa: Optional[str] = Query(None),
@@ -668,7 +679,7 @@ async def eventos(
         return {"total": 0, "items": []}
 
 
-# ── GeoJSON Endpoints ───────────────────────────────────────────────────
+# â”€â”€ GeoJSON Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/api/parcelas/geojson")
 async def parcelas_geojson(municipio: Optional[str] = Query(None), apenas_desapropriadas: bool = Query(False), _user: AuthUser = None):
     try:
@@ -727,7 +738,7 @@ async def prodes_geojson(_user: AuthUser = None):
         return {"type": "FeatureCollection", "features": []}
 
 
-# ── Score Endpoints ─────────────────────────────────────────────────────
+# â”€â”€ Score Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.post("/api/score/calcular")
 async def score_calcular(body: ScoreInput, _user: AuthUser = None):
     return calcular_score(
@@ -765,7 +776,7 @@ async def score_regioes(_user: AuthUser = None):
         return []
 
 
-# ── Peritos Endpoints ───────────────────────────────────────────────────
+# â”€â”€ Peritos Endpoints â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/api/peritos")
 async def peritos(regiao: Optional[str] = Query(None), busca: Optional[str] = Query(None), _user: AuthUser = None):
     try:
@@ -783,7 +794,7 @@ async def peritos(regiao: Optional[str] = Query(None), busca: Optional[str] = Qu
 @app.post("/api/peritos")
 async def criar_perito(body: PeritoInput, _user: CreatePeritoUser):
     try:
-        if not _db: raise HTTPException(status_code=503, detail="Banco não inicializado")
+        if not _db: raise HTTPException(status_code=503, detail="Banco nÃ£o inicializado")
         pid = _db.criar_perito(body.model_dump())
         return {"id": pid, "status": "created"}
     except Exception as e:
@@ -791,7 +802,7 @@ async def criar_perito(body: PeritoInput, _user: CreatePeritoUser):
         raise HTTPException(500, str(e))
 
 
-# ── Alertas ─────────────────────────────────────────────────────────────
+# â”€â”€ Alertas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/api/alertas")
 async def alertas(limit: int = Query(40, le=200), _user: AuthUser = None):
     try:
@@ -814,7 +825,7 @@ async def alertas(limit: int = Query(40, le=200), _user: AuthUser = None):
 async def coletas_status(limit: int = Query(50, le=200), _user: ReadOperationalUser = None):
     try:
         if not _db:
-            raise HTTPException(status_code=503, detail="Banco não inicializado")
+            raise HTTPException(status_code=503, detail="Banco nÃ£o inicializado")
         df = _db.listar_execucoes_coleta(limit=limit)
         return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
     except HTTPException:
@@ -828,7 +839,7 @@ async def coletas_status(limit: int = Query(50, le=200), _user: ReadOperationalU
 async def coletas_resumo(_user: ReadOperationalUser = None):
     try:
         if not _db:
-            raise HTTPException(status_code=503, detail="Banco não inicializado")
+            raise HTTPException(status_code=503, detail="Banco nÃ£o inicializado")
         df = _db.resumo_execucoes_coleta()
         return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
     except HTTPException:
@@ -850,7 +861,7 @@ async def executar_coleta(tipo: str, request: Request, _admin: RunCollectionsUse
             "score": lambda: task_score.delay(),
         }
         if tipo not in tasks:
-            raise HTTPException(status_code=400, detail="Tipo de coleta inválido")
+            raise HTTPException(status_code=400, detail="Tipo de coleta invÃ¡lido")
         result = tasks[tipo]()
         _audit_request(
             request,
@@ -1013,3 +1024,4 @@ async def admin_listar_auditoria(_admin: ViewAuditUser, limit: int = Query(100, 
     except Exception as e:
         logger.error(f"admin_listar_auditoria: {e}")
         raise HTTPException(status_code=500, detail="Erro ao listar auditoria")
+

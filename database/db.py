@@ -23,7 +23,7 @@ def json_dumps(value: dict) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 
 # ── DEBUG: confirmar carregamento ────────────────────────────────────
-logger.info("🔍 db.py está sendo carregado...")
+logger.info("database/db.py carregado.")
 
 # ── Defaults para variáveis de conexão (evita NameError) ─────────────
 host = os.getenv("PGHOST", "localhost")
@@ -39,9 +39,9 @@ if not _raw_db_url:
     # Monta URL com variáveis PG* do Railway
     password_encoded = quote_plus(password)
     _raw_db_url = f"postgresql://{user}:{password_encoded}@{host}:{port}/{database}"
-    logger.info(f"🔗 DATABASE_URL montada: {host}:{port}/{database}")
+    logger.info("DATABASE_URL montada: %s:%s/%s", host, port, database)
 else:
-    logger.info("🔗 DATABASE_URL fornecida via variável de ambiente")
+    logger.info("DATABASE_URL fornecida via variavel de ambiente.")
 
 # Garante driver psycopg2 para SQLAlchemy 2.0
 if _raw_db_url.startswith("postgresql://"):
@@ -406,7 +406,7 @@ class Database:
             else:
                 logger.warning("DEFAULT_ADMIN_PASSWORD ausente; usuário admin padrão não foi criado.")
             conn.commit()
-        logger.info("✅ Schema inicializado.")
+        logger.info("Schema inicializado.")
 
     def check_login(self, username: str, password_raw: str) -> bool:
         pwd_ctx = _pwd_context_ref
@@ -522,6 +522,23 @@ class Database:
             )
             conn.commit()
             return res.rowcount > 0
+
+    def cleanup_expired_sessions(self, retention_days: int = 7) -> int:
+        retention_days = max(0, min(int(retention_days), 365))
+        with self.engine.connect() as conn:
+            res = conn.execute(
+                text("""
+                    DELETE FROM user_sessions
+                    WHERE expira_em < NOW() - (:retention_days * INTERVAL '1 day')
+                       OR (
+                           revogado_em IS NOT NULL
+                           AND revogado_em < NOW() - (:retention_days * INTERVAL '1 day')
+                       )
+                """),
+                {"retention_days": retention_days},
+            )
+            conn.commit()
+            return max(res.rowcount or 0, 0)
 
     def save_geodataframe(self, gdf, table: str, if_exists: str = "append"):
         if gdf is None or (hasattr(gdf, "empty") and gdf.empty):
@@ -1261,4 +1278,4 @@ class Database:
 def init_db():
     db = Database()
     db._init_schema()
-    logger.info("🎉 Banco de dados pronto.")
+    logger.info("Banco de dados pronto.")

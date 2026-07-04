@@ -211,3 +211,24 @@ def test_atualizar_execucao_coleta_ignores_empty_id():
 
     assert conn.executed == []
     assert conn.commits == 0
+
+
+def test_cleanup_expired_sessions_deletes_old_expired_or_revoked_sessions():
+    conn = FakeConnection()
+    db = make_db(conn)
+
+    removed = db.cleanup_expired_sessions(retention_days=14)
+
+    assert removed == 1
+    assert "DELETE FROM user_sessions" in conn.executed[0][0]
+    assert conn.executed[0][1] == {"retention_days": 14}
+    assert conn.commits == 1
+
+
+def test_cleanup_expired_sessions_clamps_retention_days():
+    conn = FakeConnection()
+    db = make_db(conn)
+
+    db.cleanup_expired_sessions(retention_days=999)
+
+    assert conn.executed[0][1] == {"retention_days": 365}

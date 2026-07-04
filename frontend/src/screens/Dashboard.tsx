@@ -1,6 +1,6 @@
 import React from "react";
 import { RefreshCw } from "lucide-react";
-import { Empty } from "../components/Empty";
+import { Empty, ErrorState, LoadingState } from "../components/Empty";
 import { Metric, StatusBlock } from "../components/Metric";
 import { Page } from "../components/Page";
 import { ProcessCard } from "../components/ProcessCard";
@@ -17,9 +17,11 @@ export function Dashboard({ api, region, navigate, hasPermission }: {
   const [processos, setProcessos] = React.useState<Processo[]>([]);
   const [coletasResumo, setColetasResumo] = React.useState<Coleta[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
 
   async function load() {
     setLoading(true);
+    setError("");
     const suffix = region ? `?regiao=${encodeURIComponent(region)}` : "";
     const qs = `?faixa=janela_quente&limit=4${region ? `&regiao=${encodeURIComponent(region)}` : ""}`;
     const [statsData, processosData, coletasData] = await Promise.all([
@@ -27,6 +29,7 @@ export function Dashboard({ api, region, navigate, hasPermission }: {
       api.get<any>(`/api/processos${qs}`),
       hasPermission("read_operational") ? api.get<any>("/api/coletas/resumo") : Promise.resolve(null)
     ]);
+    if (!statsData || !processosData) setError("Não foi possível carregar o painel agora.");
     setStats(statsData);
     setProcessos(processosData?.items || []);
     setColetasResumo(coletasData?.items || []);
@@ -49,6 +52,7 @@ export function Dashboard({ api, region, navigate, hasPermission }: {
         <Metric label="Portarias D.O." value={loading ? "..." : fmt(stats?.total_portarias)} />
         <Metric label="Alertas" value={loading ? "..." : fmt(stats?.processos_quentes)} />
       </div>
+      {error && <ErrorState text={error} retry={load} />}
       {hasPermission("read_operational") && (
         <div className="card">
           <div className="card-title">Saúde das coletas</div>
@@ -64,7 +68,7 @@ export function Dashboard({ api, region, navigate, hasPermission }: {
         <div>
           <div className="section-label">Últimos processos relevantes</div>
           <div className="stack">
-            {processos.length ? processos.map((processo) => <ProcessCard key={processo.id || processo.numero_cnj} processo={processo} />) : <Empty text="Nenhum processo quente encontrado." />}
+            {loading ? <LoadingState text="Carregando processos relevantes..." /> : processos.length ? processos.map((processo) => <ProcessCard key={processo.id || processo.numero_cnj} processo={processo} />) : <Empty text="Nenhum processo quente encontrado." />}
           </div>
         </div>
         <div className="card">

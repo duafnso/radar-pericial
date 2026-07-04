@@ -28,6 +28,7 @@ app.conf.update(
         "alerts.scheduler.task_admin":    {"queue": "admin"},
         "alerts.scheduler.task_score":    {"queue": "default"},
         "alerts.scheduler.task_alerta":   {"queue": "default"},
+        "alerts.scheduler.task_cleanup_sessions": {"queue": "default"},
     },
     beat_schedule={
         # Geoespacial — a cada 12 horas
@@ -51,6 +52,10 @@ app.conf.update(
         "recalcular-scores": {
             "task": "alerts.scheduler.task_score",
             "schedule": crontab(minute=0, hour=8),
+        },
+        "limpar-sessoes-expiradas": {
+            "task": "alerts.scheduler.task_cleanup_sessions",
+            "schedule": crontab(minute=30, hour=3),
         },
     },
 )
@@ -101,6 +106,16 @@ def _mark_failed(db, execucao_id, exc: Exception) -> None:
         )
     except Exception as err:
         logger.warning(f"Falha ao registrar erro de coleta: {err}")
+
+
+@app.task(queue="default")
+def task_cleanup_sessions(retention_days: int = 7):
+    from database.db import Database
+
+    db = Database()
+    removed = db.cleanup_expired_sessions(retention_days=retention_days)
+    logger.info("task_cleanup_sessions: %s sessoes removidas", removed)
+    return {"status": "ok", "removed": removed}
 
 
 @app.task(bind=True, max_retries=2, default_retry_delay=600, queue="geo")

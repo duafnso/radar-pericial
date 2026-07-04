@@ -1,6 +1,6 @@
 import React from "react";
 import { RefreshCw } from "lucide-react";
-import { Empty } from "../components/Empty";
+import { Empty, ErrorState, LoadingState } from "../components/Empty";
 import { Page } from "../components/Page";
 import { ProcessCard } from "../components/ProcessCard";
 import type { ApiClient, Processo } from "../types";
@@ -12,8 +12,12 @@ export function Processos({ api, region }: { api: ApiClient; region: string }) {
   const [items, setItems] = React.useState<Processo[]>([]);
   const [total, setTotal] = React.useState(0);
   const [filters, setFilters] = React.useState<Filters>({ faixa: "", regiao: "", municipio: "", classe: "" });
+  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
 
   async function load() {
+    setLoading(true);
+    setError("");
     const params = new URLSearchParams({ limit: "50", offset: "0" });
     const effectiveRegion = region || filters.regiao;
     if (filters.faixa) params.set("faixa", filters.faixa);
@@ -21,8 +25,10 @@ export function Processos({ api, region }: { api: ApiClient; region: string }) {
     if (filters.municipio) params.set("municipio", filters.municipio);
     if (filters.classe) params.set("classe", filters.classe);
     const data = await api.get<any>(`/api/processos?${params.toString()}`);
+    if (!data) setError("Não foi possível carregar os processos.");
     setItems(data?.items || []);
     setTotal(data?.total || 0);
+    setLoading(false);
   }
 
   React.useEffect(() => { load(); }, [region, filters]);
@@ -30,7 +36,8 @@ export function Processos({ api, region }: { api: ApiClient; region: string }) {
   return (
     <Page title="Radar de Processos Judiciais" subtitle={`${fmt(total)} processos · dados da última coleta judicial`} action={<button onClick={load}><RefreshCw size={14} /> Atualizar</button>}>
       <FilterBar filters={filters} setFilters={setFilters} />
-      {items.length ? <div className="stack">{items.map((processo) => <ProcessCard key={processo.id || processo.numero_cnj} processo={processo} />)}</div> : <Empty text="Nenhum processo encontrado com estes filtros." />}
+      {error && <ErrorState text={error} retry={load} />}
+      {loading ? <LoadingState text="Carregando processos..." /> : items.length ? <div className="stack">{items.map((processo) => <ProcessCard key={processo.id || processo.numero_cnj} processo={processo} />)}</div> : <Empty text="Nenhum processo encontrado com estes filtros." />}
     </Page>
   );
 }

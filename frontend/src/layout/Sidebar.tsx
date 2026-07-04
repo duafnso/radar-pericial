@@ -1,4 +1,4 @@
-import { Activity, Bell, Calculator, Database, FileText, Gavel, LogOut, Map, Shield, Users, UserRoundCog } from "lucide-react";
+import { Activity, Bell, Calculator, Database, FileText, Gavel, LogOut, Map, Shield, UserRoundCog } from "lucide-react";
 import type { ApiUser, NavItem, Screen } from "../types";
 
 const NAV: Array<{ section: string; items: NavItem[] }> = [
@@ -15,7 +15,6 @@ const NAV: Array<{ section: string; items: NavItem[] }> = [
     section: "Ferramentas",
     items: [
       { id: "score", label: "Calculadora Pericial", icon: Calculator },
-      { id: "peritos", label: "Corpo Pericial", icon: Users },
       { id: "alertas", label: "Central de Alertas", icon: Bell }
     ]
   },

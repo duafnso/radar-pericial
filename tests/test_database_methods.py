@@ -143,7 +143,9 @@ def test_save_movimentacao_inserts_new_row():
 
     assert "INSERT INTO movimentacoes" in conn.executed[1][0]
     assert conn.executed[1][1]["pid"] == 10
-    assert conn.commits == 1
+    assert "INSERT INTO alertas_usuario" in conn.executed[2][0]
+    assert conn.executed[2][1]["processo_id"] == 10
+    assert conn.commits == 2
 
 
 def test_save_portarias_deduplicates_existing_rows(monkeypatch):

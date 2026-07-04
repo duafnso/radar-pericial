@@ -1,8 +1,8 @@
 import React from "react";
-import { Layers, Map as MapIcon, RefreshCw } from "lucide-react";
+import { MapPin, RefreshCw } from "lucide-react";
 import { ErrorState, LoadingState } from "../components/Empty";
 import { Page } from "../components/Page";
-import type { ApiClient } from "../types";
+import type { ApiClient, Processo } from "../types";
 import { fmt } from "../utils/format";
 
 declare global {
@@ -11,17 +11,30 @@ declare global {
   }
 }
 
-type FeatureCollection = {
-  type?: string;
-  features?: Array<{ properties?: Record<string, any>; geometry?: any }>;
+const CITY_COORDS: Record<string, [number, number]> = {
+  "Cuiabá": [-15.601, -56.097],
+  "Cuiaba": [-15.601, -56.097],
+  "Várzea Grande": [-15.646, -56.132],
+  "Rondonópolis": [-16.467, -54.637],
+  "Sinop": [-11.860, -55.509],
+  "Sorriso": [-12.542, -55.721],
+  "Lucas do Rio Verde": [-13.070, -55.923],
+  "Nova Mutum": [-13.837, -56.074],
+  "Primavera do Leste": [-15.544, -54.281],
+  "Tangará da Serra": [-14.622, -57.493],
+  "Cáceres": [-16.076, -57.681],
+  "Alta Floresta": [-9.875, -56.086],
+  "Barra do Garças": [-15.890, -52.256],
+  "Água Boa": [-14.051, -52.160],
+  "Juína": [-11.423, -58.758]
 };
 
 export function MapScreen({ api, region }: { api: ApiClient; region: string }) {
   const mapRef = React.useRef<HTMLDivElement | null>(null);
   const mapInstance = React.useRef<any>(null);
-  const [municipios, setMunicipios] = React.useState<FeatureCollection | null>(null);
-  const [prioritarias, setPrioritarias] = React.useState<FeatureCollection | null>(null);
-  const [status, setStatus] = React.useState("Carregando camadas territoriais...");
+  const markerLayer = React.useRef<any>(null);
+  const [items, setItems] = React.useState<Processo[]>([]);
+  const [status, setStatus] = React.useState("Carregando processos georreferenciados...");
   const [loading, setLoading] = React.useState(true);
   const [fallback, setFallback] = React.useState(false);
   const [error, setError] = React.useState("");
@@ -51,101 +64,106 @@ export function MapScreen({ api, region }: { api: ApiClient; region: string }) {
     });
   }
 
-  async function loadLayers() {
+  function coordsFor(processo: Processo): [number, number] | null {
+    const lat = Number(processo.lat);
+    const lng = Number(processo.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat && lng) return [lat, lng];
+    const city = String(processo.municipio || processo.comarca || "").trim();
+    return CITY_COORDS[city] || null;
+  }
+
+  async function loadMap() {
     setLoading(true);
     setFallback(false);
     setError("");
-    setStatus("Carregando camadas territoriais...");
-
-    const [municipiosData, prioritariasData] = await Promise.all([
-      api.get<FeatureCollection>("/api/municipios/geojson"),
-      api.get<FeatureCollection>("/api/parcelas/geojson?apenas_desapropriadas=true")
-    ]);
-
-    if (!municipiosData || !prioritariasData) {
-      setError("Não foi possível carregar as camadas geoespaciais.");
-      setMunicipios(municipiosData);
-      setPrioritarias(prioritariasData);
+    const params = new URLSearchParams({ limit: "120" });
+    if (region) params.set("regiao", region);
+    const data = await api.get<any>(`/api/processos/mapa?${params.toString()}`);
+    if (!data) {
+      setError("Não foi possível carregar os processos do mapa.");
       setLoading(false);
       return;
     }
-
-    setMunicipios(municipiosData);
-    setPrioritarias(prioritariasData);
+    const nextItems = (data.items || []).filter((item: Processo) => coordsFor(item));
+    setItems(nextItems);
 
     try {
       const L = await ensureLeaflet();
       if (!mapRef.current) return;
       if (!mapInstance.current) {
-        mapInstance.current = L.map(mapRef.current, { center: [-12.5, -55.5], zoom: 6, zoomControl: true });
+        mapInstance.current = L.map(mapRef.current, { center: [-13.8, -55.9], zoom: 6, zoomControl: true });
         L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: "© OpenStreetMap",
+          attribution: "OpenStreetMap",
           maxZoom: 18
         }).addTo(mapInstance.current);
       }
-      mapInstance.current.eachLayer((layer: any) => {
-        if (layer?.feature) mapInstance.current.removeLayer(layer);
+      if (markerLayer.current) markerLayer.current.clearLayers();
+      markerLayer.current = L.layerGroup().addTo(mapInstance.current);
+      const pinIcon = L.divIcon({
+        className: "process-pin",
+        html: "<span></span>",
+        iconSize: [28, 36],
+        iconAnchor: [14, 32],
+        popupAnchor: [0, -30]
       });
-      if (municipiosData.features?.length) {
-        L.geoJSON(municipiosData, {
-          style: { color: "#7f8978", weight: 1, fillOpacity: 0.04 },
-          onEachFeature: (feature: any, layer: any) => layer.bindTooltip(feature.properties?.nome || "Município", { sticky: true })
-        }).addTo(mapInstance.current);
-      }
-      if (prioritariasData.features?.length) {
-        const layer = L.geoJSON(prioritariasData, {
-          style: { color: "#8a2424", weight: 1.5, fillColor: "#c0392b", fillOpacity: 0.42 },
-          onEachFeature: (feature: any, layer: any) => {
-            const props = feature.properties || {};
-            layer.bindPopup(`<strong>${props.municipio || "Imóvel rural"}</strong><br/>${props.codigo_imovel || ""}<br/>${props.area_ha ? Number(props.area_ha).toLocaleString("pt-BR") + " ha" : ""}`);
-          }
-        }).addTo(mapInstance.current);
-        try { mapInstance.current.fitBounds(layer.getBounds(), { padding: [18, 18] }); } catch {}
-      }
-      setStatus("Camadas geoespaciais carregadas");
+      const bounds: any[] = [];
+      nextItems.forEach((processo: Processo) => {
+        const coords = coordsFor(processo);
+        if (!coords) return;
+        bounds.push(coords);
+        L.marker(coords, { icon: pinIcon })
+          .bindPopup(`
+            <strong>${processo.numero_cnj || "Processo"}</strong><br/>
+            ${processo.municipio || processo.comarca || "Município não informado"}<br/>
+            Score ${processo.score_total || 0} · ${processo.classe_processual || ""}
+          `)
+          .addTo(markerLayer.current);
+      });
+      if (bounds.length) mapInstance.current.fitBounds(bounds, { padding: [34, 34], maxZoom: 8 });
+      setStatus(`${fmt(nextItems.length)} processos com pin por município`);
+      window.setTimeout(() => mapInstance.current?.invalidateSize(), 80);
     } catch {
       setFallback(true);
-      setStatus("Mapa interativo indisponível. Resumo territorial carregado pela API.");
+      setStatus("Mapa interativo indisponível. Pins exibidos em modo resumo.");
     } finally {
       setLoading(false);
     }
   }
 
-  React.useEffect(() => { loadLayers(); }, [api]);
-
-  const municipiosCount = municipios?.features?.length || 0;
-  const prioritariasCount = prioritarias?.features?.length || 0;
-  const samples = (prioritarias?.features || []).slice(0, 6).map((feature) => feature.properties || {});
+  React.useEffect(() => { loadMap(); }, [api, region]);
 
   return (
-    <Page title="Mapa Territorial" subtitle={region ? `Camadas territoriais em ${region}` : "Camadas geoespaciais de Mato Grosso"} action={<button onClick={loadLayers}><RefreshCw size={14} /> Atualizar</button>}>
+    <Page title="Mapa Territorial" subtitle={region ? `Processos por cidade em ${region}` : "Processos com localização por município"} action={<button onClick={loadMap}><RefreshCw size={14} /> Atualizar</button>}>
       <div className="map-shell">
         <div className="map-toolbar">
-          <div><Layers size={16} /> {fmt(prioritariasCount)} imóveis em camada prioritária</div>
+          <div><MapPin size={16} /> {fmt(items.length)} pins de processos</div>
           <span>{status}</span>
         </div>
-        {error && <ErrorState text={error} retry={loadLayers} />}
+        {error && <ErrorState text={error} retry={loadMap} />}
+        <div ref={mapRef} className={`leaflet-map ${fallback ? "hidden" : ""}`} />
         {loading && <LoadingState text="Carregando mapa territorial..." />}
-        {!loading && !fallback && !error && <div ref={mapRef} className="leaflet-map" />}
-        {!loading && fallback && !error && (
-          <div className="map-fallback">
-            <div className="map-fallback-summary">
-              <div><MapIcon size={18} /> Modo resumo</div>
-              <strong>{fmt(municipiosCount)} municípios</strong>
-              <strong>{fmt(prioritariasCount)} imóveis prioritários</strong>
-            </div>
-            <div className="map-fallback-grid">
-              {samples.length ? samples.map((props, index) => (
-                <div className="map-fallback-item" key={`${props.codigo_imovel || props.municipio || index}`}>
-                  <strong>{props.municipio || "Município não informado"}</strong>
-                  <span>{props.codigo_imovel || "Código do imóvel pendente"}</span>
-                  <span>{props.area_ha ? `${Number(props.area_ha).toLocaleString("pt-BR")} ha` : "Área não informada"}</span>
-                </div>
-              )) : <span className="map-fallback-empty">Nenhum imóvel prioritário retornado pela API.</span>}
-            </div>
-          </div>
-        )}
+        {!loading && fallback && !error && <FallbackPins items={items.slice(0, 12)} />}
       </div>
     </Page>
+  );
+}
+
+function FallbackPins({ items }: { items: Processo[] }) {
+  return (
+    <div className="map-fallback">
+      <div className="map-fallback-summary">
+        <div><MapPin size={18} /> Pins por cidade</div>
+        <strong>{fmt(items.length)} processos</strong>
+      </div>
+      <div className="map-fallback-grid">
+        {items.length ? items.map((processo) => (
+          <div className="map-fallback-item" key={processo.id || processo.numero_cnj}>
+            <strong>{processo.municipio || processo.comarca || "Cidade não informada"}</strong>
+            <span>{processo.numero_cnj || "CNJ pendente"}</span>
+            <span>Score {processo.score_total || 0} · {processo.classe_processual || "Classe pendente"}</span>
+          </div>
+        )) : <span className="map-fallback-empty">Nenhum processo com município reconhecido para posicionar no mapa.</span>}
+      </div>
+    </div>
   );
 }

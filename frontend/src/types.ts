@@ -8,7 +8,6 @@ export type Screen =
   | "processos"
   | "administrativo"
   | "score"
-  | "peritos"
   | "alertas"
   | "coletas"
   | "usuarios"

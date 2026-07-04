@@ -389,6 +389,31 @@ class Database:
             ON auditoria_eventos(ator_user_id, criado_em DESC);
         CREATE INDEX IF NOT EXISTS idx_auditoria_eventos_acao
             ON auditoria_eventos(acao, criado_em DESC);
+
+        CREATE TABLE IF NOT EXISTS processos_acompanhados (
+            id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            processo_id INT NOT NULL REFERENCES processos(id) ON DELETE CASCADE,
+            ativo BOOLEAN NOT NULL DEFAULT TRUE,
+            criado_em TIMESTAMPTZ DEFAULT NOW(),
+            atualizado_em TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(user_id, processo_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_proc_acomp_user
+            ON processos_acompanhados(user_id, ativo, criado_em DESC);
+
+        CREATE TABLE IF NOT EXISTS alertas_usuario (
+            id SERIAL PRIMARY KEY,
+            user_id INT NOT NULL REFERENCES usuarios(id) ON DELETE CASCADE,
+            processo_id INT REFERENCES processos(id) ON DELETE CASCADE,
+            tipo TEXT NOT NULL DEFAULT 'processo',
+            titulo TEXT NOT NULL,
+            mensagem TEXT,
+            lido BOOLEAN NOT NULL DEFAULT FALSE,
+            criado_em TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_alertas_usuario_user
+            ON alertas_usuario(user_id, lido, criado_em DESC);
         """
         lock_key = 83476201
         with self.engine.connect() as conn:
@@ -770,7 +795,7 @@ class Database:
             ).fetchone()
             if existing:
                 logger.debug(f"Movimentação duplicada ignorada: processo {processo_id}")
-                return
+                return False
             conn.execute(
                 text("""
                     INSERT INTO movimentacoes (processo_id, data_movimentacao, descricao, fonte, score_evento)
@@ -786,6 +811,12 @@ class Database:
                 },
             )
             conn.commit()
+        self.notify_followers_for_processo(
+            processo_id,
+            "Nova movimentacao em processo acompanhado",
+            dados.get("descricao") or "O processo acompanhado recebeu uma nova movimentacao.",
+        )
+        return True
 
     def save_portarias(self, portarias: list):
         if not portarias:
@@ -1039,6 +1070,88 @@ class Database:
             """,
             {"limit": limit},
         )
+
+    def acompanhar_processo(self, user_id: int, processo_id: int) -> bool:
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT numero_cnj FROM processos WHERE id=:id"),
+                {"id": processo_id},
+            ).fetchone()
+            if not row:
+                return False
+            conn.execute(
+                text("""
+                    INSERT INTO processos_acompanhados (user_id, processo_id, ativo, atualizado_em)
+                    VALUES (:user_id, :processo_id, TRUE, NOW())
+                    ON CONFLICT (user_id, processo_id) DO UPDATE
+                    SET ativo = TRUE, atualizado_em = NOW()
+                """),
+                {"user_id": user_id, "processo_id": processo_id},
+            )
+            conn.execute(
+                text("""
+                    INSERT INTO alertas_usuario (user_id, processo_id, tipo, titulo, mensagem)
+                    VALUES (:user_id, :processo_id, 'processo', 'Processo acompanhado', :mensagem)
+                """),
+                {
+                    "user_id": user_id,
+                    "processo_id": processo_id,
+                    "mensagem": f"O processo {row[0]} foi adicionado ao monitoramento.",
+                },
+            )
+            conn.commit()
+            return True
+
+    def listar_processos_acompanhados(self, user_id: int, limit: int = 100) -> pd.DataFrame:
+        return self.query(
+            """
+            SELECT a.id, a.processo_id, a.criado_em::text AS criado_em,
+                   p.numero_cnj, p.classe_processual, p.municipio, p.comarca,
+                   p.fase_atual, p.atualizado_em::text AS atualizado_em,
+                   s.score_total, s.faixa_probabilidade, s.tipo_pericia_sugerida
+            FROM processos_acompanhados a
+            JOIN processos p ON p.id = a.processo_id
+            LEFT JOIN score_pericial s ON s.processo_id = p.id
+            WHERE a.user_id = :user_id AND a.ativo = TRUE
+            ORDER BY a.criado_em DESC
+            LIMIT :limit
+            """,
+            {"user_id": user_id, "limit": limit},
+        )
+
+    def listar_alertas_usuario(self, user_id: int, limit: int = 100) -> pd.DataFrame:
+        return self.query(
+            """
+            SELECT au.id, au.tipo, au.titulo, au.mensagem, au.lido,
+                   au.criado_em::text AS criado_em,
+                   p.id AS processo_id, p.numero_cnj, p.classe_processual,
+                   p.municipio, p.comarca, p.fase_atual
+            FROM alertas_usuario au
+            LEFT JOIN processos p ON p.id = au.processo_id
+            WHERE au.user_id = :user_id
+            ORDER BY au.criado_em DESC
+            LIMIT :limit
+            """,
+            {"user_id": user_id, "limit": limit},
+        )
+
+    def notify_followers_for_processo(self, processo_id: int, titulo: str, mensagem: str) -> int:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    INSERT INTO alertas_usuario (user_id, processo_id, tipo, titulo, mensagem)
+                    SELECT user_id, :processo_id, 'processo', :titulo, :mensagem
+                    FROM processos_acompanhados
+                    WHERE processo_id = :processo_id AND ativo = TRUE
+                """),
+                {
+                    "processo_id": processo_id,
+                    "titulo": titulo[:180],
+                    "mensagem": (mensagem or "")[:1200],
+                },
+            )
+            conn.commit()
+            return max(result.rowcount or 0, 0)
 
     def iniciar_execucao_coleta(
         self,

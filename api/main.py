@@ -639,6 +639,74 @@ async def processos(
         return {"total": 0, "items": []}
 
 
+@app.get("/api/processos/mapa")
+async def processos_mapa(
+    regiao: Optional[str] = Query(None),
+    limit: int = Query(120, le=500),
+    _user: AuthUser = None,
+):
+    try:
+        if not _db:
+            return {"total": 0, "items": []}
+        params = {"limit": limit}
+        where = ""
+        if regiao:
+            where = "WHERE p.regiao_imea = :regiao"
+            params["regiao"] = regiao
+        df = _db.query(f"""
+            SELECT p.id, p.numero_cnj, p.classe_processual, p.assunto_principal,
+                   p.municipio, p.comarca, p.fase_atual,
+                   s.score_total, s.faixa_probabilidade, s.tipo_pericia_sugerida,
+                   ST_Y(ST_PointOnSurface(m.geometry)) AS lat,
+                   ST_X(ST_PointOnSurface(m.geometry)) AS lng
+            FROM processos p
+            LEFT JOIN score_pericial s ON s.processo_id = p.id
+            LEFT JOIN municipios_mt m ON lower(m.nome) = lower(p.municipio)
+            {where}
+            ORDER BY s.score_total DESC NULLS LAST
+            LIMIT :limit
+        """, params)
+        return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
+    except Exception as e:
+        logger.error(f"processos_mapa: {e}")
+        return {"total": 0, "items": []}
+
+
+@app.post("/api/processos/{processo_id}/acompanhar")
+async def acompanhar_processo(processo_id: int, request: Request, _user: AuthUser):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        ok = _db.acompanhar_processo(int(_user["id"]), processo_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Processo nao encontrado")
+        _audit_request(
+            request,
+            "processo_acompanhado",
+            ator=_user,
+            entidade="processo",
+            entidade_id=str(processo_id),
+        )
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"acompanhar_processo: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao acompanhar processo")
+
+
+@app.get("/api/processos/acompanhados")
+async def processos_acompanhados(limit: int = Query(100, le=300), _user: AuthUser = None):
+    try:
+        if not _db:
+            return {"total": 0, "items": []}
+        df = _db.listar_processos_acompanhados(int(_user["id"]), limit=limit)
+        return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
+    except Exception as e:
+        logger.error(f"processos_acompanhados: {e}")
+        return {"total": 0, "items": []}
+
+
 # â”€â”€ Eventos / Portarias â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.get("/api/eventos")
 async def eventos(
@@ -807,6 +875,7 @@ async def criar_perito(body: PeritoInput, _user: CreatePeritoUser):
 async def alertas(limit: int = Query(40, le=200), _user: AuthUser = None):
     try:
         if not _db: return {"total": 0, "items": []}
+        pessoais = _db.listar_alertas_usuario(int(_user["id"]), limit=limit)
         df = _db.query("""
             SELECT titulo, resumo, data_publicacao::text AS data_publicacao,
                    municipio, area_ha, fonte, orgao, url,
@@ -815,7 +884,12 @@ async def alertas(limit: int = Query(40, le=200), _user: AuthUser = None):
             WHERE faixa_probabilidade IN ('janela_quente','provavel')
             ORDER BY coletado_em DESC LIMIT :limit
         """, {"limit": limit})
-        return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
+        items = []
+        for item in pessoais.fillna("").to_dict(orient="records"):
+            items.append({**item, "origem_alerta": "processo_acompanhado"})
+        for item in df.fillna("").to_dict(orient="records"):
+            items.append({**item, "origem_alerta": "oportunidade_administrativa"})
+        return {"total": len(items), "items": items[:limit]}
     except Exception as e:
         logger.error(f"alertas: {e}")
         return {"total": 0, "items": []}

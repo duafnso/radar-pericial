@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { useApiClient } from "./api/client";
 import { ROLE_PERMISSIONS, SCREEN_PERMISSIONS } from "./auth/permissions";
 import { Sidebar } from "./layout/Sidebar";
-import { Administrativo, Alertas, Peritos } from "./screens/AdminScreens";
+import { Administrativo, Alertas } from "./screens/AdminScreens";
 import { Auditoria } from "./screens/Auditoria";
 import { Coletas } from "./screens/Coletas";
 import { Dashboard } from "./screens/Dashboard";
@@ -73,10 +73,9 @@ function App() {
       <main className="workspace">
         {screen === "dashboard" && <Dashboard api={api} region={region} navigate={navigate} hasPermission={hasPermission} />}
         {screen === "mapa" && <MapScreen api={api} region={region} />}
-        {screen === "processos" && <Processos api={api} region={region} />}
+        {screen === "processos" && <Processos api={api} region={region} navigate={navigate} notify={notify} />}
         {screen === "administrativo" && <Administrativo api={api} />}
         {screen === "score" && <ScoreCalculator api={api} hasPermission={hasPermission} />}
-        {screen === "peritos" && <Peritos api={api} />}
         {screen === "alertas" && <Alertas api={api} />}
         {screen === "coletas" && <Coletas api={api} hasPermission={hasPermission} notify={notify} />}
         {screen === "usuarios" && <Usuarios api={api} hasPermission={hasPermission} notify={notify} />}

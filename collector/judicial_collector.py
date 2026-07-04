@@ -75,6 +75,17 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_date(name: str) -> str:
+    value = (os.getenv(name) or "").strip()
+    if not value:
+        return ""
+    try:
+        return datetime.strptime(value[:10], "%Y-%m-%d").strftime("%Y-%m-%d")
+    except Exception:
+        logger.warning("%s invalido; esperado YYYY-MM-DD.", name)
+        return ""
+
+
 def _extract_hits(payload: dict) -> list:
     hits = (payload or {}).get("hits", {})
     if isinstance(hits, dict):
@@ -88,10 +99,12 @@ def _extract_hits(payload: dict) -> list:
 # ── DataJud / CNJ ─────────────────────────────────────────────────────
 def fetch_datajud(classe: str, dias_atras: int = 30, max_results: int = 100) -> list:
     url = "https://api-publica.datajud.cnj.jus.br/api_publica_tjmt/_search"
-    data_ini = (datetime.now() - timedelta(days=dias_atras)).strftime("%Y-%m-%d")
-    page_size = max(10, min(_env_int("DATAJUD_PAGE_SIZE", 50), 200))
+    data_ini = _env_date("DATAJUD_START_DATE") or (datetime.now() - timedelta(days=dias_atras)).strftime("%Y-%m-%d")
+    page_size = max(10, min(_env_int("DATAJUD_PAGE_SIZE", 50), 150))
     max_total = max(page_size, _env_int("DATAJUD_MAX_RESULTS_PER_CLASS", max_results))
     request_delay = max(0.0, _env_float("DATAJUD_REQUEST_DELAY_SECONDS", 2.0))
+    cooldown_429 = max(request_delay, _env_float("DATAJUD_429_COOLDOWN_SECONDS", 60.0))
+    max_429_retries = max(0, min(_env_int("DATAJUD_MAX_429_RETRIES", 1), 3))
 
     query_base = {
         "bool": {
@@ -117,6 +130,7 @@ def fetch_datajud(classe: str, dias_atras: int = 30, max_results: int = 100) -> 
     out = []
     try:
         offset = 0
+        hits = []
         while len(out) < max_total:
             payload = {
                 "query": query_base,
@@ -132,8 +146,25 @@ def fetch_datajud(classe: str, dias_atras: int = 30, max_results: int = 100) -> 
                 time.sleep(request_delay)
             r = S.post(url, json=payload, timeout=60)
             if r.status_code == 429:
-                logger.warning(f"DataJud '{classe}': limite de taxa atingido (429); interrompendo classe")
-                break
+                retried = False
+                for attempt in range(max_429_retries):
+                    logger.warning(
+                        "DataJud '%s': limite de taxa atingido (429); aguardando %.0fs antes de nova tentativa %s/%s",
+                        classe,
+                        cooldown_429,
+                        attempt + 1,
+                        max_429_retries,
+                    )
+                    time.sleep(cooldown_429)
+                    r = S.post(url, json=payload, timeout=60)
+                    if r.status_code != 429:
+                        retried = True
+                        break
+                if r.status_code == 429:
+                    logger.warning(f"DataJud '{classe}': 429 persistente; interrompendo classe")
+                    break
+                if retried and request_delay:
+                    time.sleep(request_delay)
             r.raise_for_status()
             hits = _extract_hits(r.json())
             if not hits:
@@ -174,8 +205,16 @@ def fetch_datajud(classe: str, dias_atras: int = 30, max_results: int = 100) -> 
                 time.sleep(request_delay)
             r = S.post(url, json=payload_fallback, timeout=60)
             if r.status_code == 429:
-                logger.warning(f"DataJud '{classe}' fallback: limite de taxa atingido (429)")
-                return out
+                logger.warning(
+                    "DataJud '%s' fallback: limite de taxa atingido (429); aguardando %.0fs",
+                    classe,
+                    cooldown_429,
+                )
+                time.sleep(cooldown_429)
+                r = S.post(url, json=payload_fallback, timeout=60)
+                if r.status_code == 429:
+                    logger.warning(f"DataJud '{classe}' fallback: 429 persistente")
+                    return out
             r.raise_for_status()
             hits = _extract_hits(r.json())
             for h in hits:

@@ -1397,6 +1397,35 @@ class Database:
             {"limit": limit},
         )
 
+    def listar_metricas_coleta_classe(
+        self,
+        limit: int = 200,
+        fonte: Optional[str] = None,
+        execucao_id: Optional[int] = None,
+    ) -> pd.DataFrame:
+        where = []
+        params = {"limit": max(1, min(int(limit), 500))}
+        if fonte:
+            where.append("fonte = :fonte")
+            params["fonte"] = fonte
+        if execucao_id:
+            where.append("execucao_id = :execucao_id")
+            params["execucao_id"] = int(execucao_id)
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        return self.query(
+            f"""
+            SELECT id, execucao_id, fonte, chave, status,
+                   registros_coletados, registros_salvos,
+                   descartados_sem_cnj, duplicados, erro,
+                   criado_em::text AS criado_em
+            FROM metricas_coleta_classe
+            {where_sql}
+            ORDER BY criado_em DESC
+            LIMIT :limit
+            """,
+            params,
+        )
+
     def resumo_execucoes_coleta(self) -> pd.DataFrame:
         return self.query(
             """

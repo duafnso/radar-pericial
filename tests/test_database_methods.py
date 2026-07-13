@@ -244,6 +244,26 @@ def test_registrar_metrica_coleta_classe_inserts_metrics():
     assert conn.commits == 1
 
 
+def test_listar_metricas_coleta_classe_filters_by_fonte(monkeypatch):
+    from database.db import Database
+
+    captured = {}
+    db = object.__new__(Database)
+
+    def fake_query(sql, params=None):
+        captured["sql"] = sql
+        captured["params"] = params
+        return pd.DataFrame()
+
+    monkeypatch.setattr(db, "query", fake_query)
+
+    db.listar_metricas_coleta_classe(limit=20, fonte="judicial")
+
+    assert "FROM metricas_coleta_classe" in captured["sql"]
+    assert "fonte = :fonte" in captured["sql"]
+    assert captured["params"] == {"limit": 20, "fonte": "judicial"}
+
+
 def test_datajud_data_inicio_incremental_prefers_configured_start():
     conn = FakeConnection()
     db = make_db(conn)

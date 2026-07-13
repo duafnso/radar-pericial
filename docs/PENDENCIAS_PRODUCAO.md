@@ -37,6 +37,8 @@ Estado revisado em 2026-07-13.
 - Usuarios ganhou exportacao CSV da lista filtrada.
 - Auditoria ganhou filtros por acao, ator, entidade e intervalo de datas.
 - Auditoria ganhou exportacao CSV da lista filtrada.
+- Coletas ganhou exportacao CSV de historico e metricas.
+- Coletas ganhou diagnostico por classe/fonte com coletados, salvos, sem CNJ e duplicados.
 - Central de Alertas permite marcar alerta de processo acompanhado como lido.
 
 ## Ainda pendente antes de venda comercial
@@ -94,7 +96,6 @@ Estado revisado em 2026-07-13.
 
 - Validar visualmente as telas em desktop, notebook e mobile.
 - Melhorar estados vazios com acoes diretas por perfil.
-- Criar exportacao CSV para Coletas.
 - Avaliar se a exportacao CSV do Radar de Processos deve baixar todos os resultados filtrados ou apenas a pagina atual.
 
 ### 6. Compliance comercial

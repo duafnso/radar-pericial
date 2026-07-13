@@ -109,6 +109,25 @@ class FakeDb:
             ]
         )
 
+    def listar_metricas_coleta_classe(self, limit=200, fonte=None, execucao_id=None):
+        return pd.DataFrame(
+            [
+                {
+                    "id": 1,
+                    "execucao_id": 20,
+                    "fonte": fonte or "judicial",
+                    "chave": "desapropriacao",
+                    "status": "success",
+                    "registros_coletados": 12,
+                    "registros_salvos": 10,
+                    "descartados_sem_cnj": 1,
+                    "duplicados": 1,
+                    "erro": None,
+                    "criado_em": "2026-07-13T08:00:00",
+                }
+            ]
+        )
+
     def acompanhar_processo(self, user_id, processo_id):
         return processo_id == 10
 
@@ -372,6 +391,21 @@ def test_coletas_status_returns_history_for_operator(api_client):
     assert payload["total"] == 1
     assert payload["items"][0]["fonte"] == "judicial"
     assert payload["items"][0]["registros_salvos"] == 4
+
+
+def test_coletas_metricas_returns_diagnostics_for_operator(api_client):
+    client, _ = api_client
+
+    response = client.get(
+        "/api/coletas/metricas?fonte=judicial&limit=5",
+        headers=auth_header("token-operator"),
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["total"] == 1
+    assert payload["items"][0]["chave"] == "desapropriacao"
+    assert payload["items"][0]["duplicados"] == 1
 
 
 def test_manual_collection_enqueue_is_mocked(api_client, monkeypatch):

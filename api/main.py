@@ -1017,11 +1017,18 @@ def _validate_password(password: str) -> None:
 
 
 @app.get("/api/admin/usuarios")
-async def admin_listar_usuarios(_admin: ManageUsersUser):
+async def admin_listar_usuarios(
+    _admin: ManageUsersUser,
+    role: Optional[str] = Query(None),
+    ativo: Optional[bool] = Query(None),
+    busca: Optional[str] = Query(None),
+):
     try:
         if not _db:
             raise HTTPException(status_code=503, detail="Banco nao inicializado")
-        df = _db.listar_usuarios()
+        if role:
+            _validate_role(role)
+        df = _db.listar_usuarios(role=role, ativo=ativo, busca=busca)
         return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
     except HTTPException:
         raise
@@ -1139,11 +1146,26 @@ async def admin_redefinir_senha(user_id: int, body: UsuarioSenhaInput, request: 
 
 
 @app.get("/api/admin/auditoria")
-async def admin_listar_auditoria(_admin: ViewAuditUser, limit: int = Query(100, le=500)):
+async def admin_listar_auditoria(
+    _admin: ViewAuditUser,
+    limit: int = Query(100, le=500),
+    acao: Optional[str] = Query(None),
+    ator: Optional[str] = Query(None),
+    entidade: Optional[str] = Query(None),
+    data_inicio: Optional[str] = Query(None),
+    data_fim: Optional[str] = Query(None),
+):
     try:
         if not _db:
             raise HTTPException(status_code=503, detail="Banco nao inicializado")
-        df = _db.listar_auditoria(limit=limit)
+        df = _db.listar_auditoria(
+            limit=limit,
+            acao=acao,
+            ator=ator,
+            entidade=entidade,
+            data_inicio=data_inicio,
+            data_fim=data_fim,
+        )
         return {"total": len(df), "items": df.fillna("").to_dict(orient="records")}
     except HTTPException:
         raise

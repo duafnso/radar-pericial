@@ -32,6 +32,11 @@ Estado revisado em 2026-07-13.
   - duplicados;
   - erro resumido.
 - Radar de Processos ganhou filtros de data de distribuicao.
+- Radar de Processos ganhou paginacao e exportacao CSV da pagina atual.
+- Usuarios ganhou filtros por perfil, status e busca.
+- Usuarios ganhou exportacao CSV da lista filtrada.
+- Auditoria ganhou filtros por acao, ator, entidade e intervalo de datas.
+- Auditoria ganhou exportacao CSV da lista filtrada.
 - Central de Alertas permite marcar alerta de processo acompanhado como lido.
 
 ## Ainda pendente antes de venda comercial
@@ -89,10 +94,8 @@ Estado revisado em 2026-07-13.
 
 - Validar visualmente as telas em desktop, notebook e mobile.
 - Melhorar estados vazios com acoes diretas por perfil.
-- Adicionar paginacao completa no Radar de Processos.
-- Adicionar filtros por role/status na tela de Usuarios.
-- Adicionar filtros na Auditoria.
-- Criar exportacao CSV para Auditoria e Coletas.
+- Criar exportacao CSV para Coletas.
+- Avaliar se a exportacao CSV do Radar de Processos deve baixar todos os resultados filtrados ou apenas a pagina atual.
 
 ### 6. Compliance comercial
 

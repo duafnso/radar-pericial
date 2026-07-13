@@ -18,6 +18,7 @@ body { margin: 0; background: var(--paper); color: var(--ink); }
 button, input, select, textarea { font: inherit; }
 button { border: 1px solid var(--line); background: var(--white); color: var(--ink); padding: 9px 12px; border-radius: 6px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
 button:hover { border-color: #b9bdb2; }
+button:disabled { opacity: .45; cursor: not-allowed; }
 button.primary, .primary { background: var(--field); color: #fff; border-color: var(--field); }
 button.secondary, .secondary { background: transparent; }
 button.ghost, .ghost { background: transparent; color: rgba(255,255,255,.72); border-color: rgba(255,255,255,.16); }
@@ -86,6 +87,7 @@ textarea { min-height: 130px; resize: vertical; }
 .status-block.high strong { color: var(--field); }
 .alert-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
 .alert-row.read { opacity: .62; }
+.pagination-row { display: flex; justify-content: space-between; gap: 12px; align-items: center; color: var(--muted); font-size: 13px; }
 .action-list, .button-row, .filters { display: flex; gap: 10px; flex-wrap: wrap; }
 .filters { background: var(--white); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
 .filters > * { flex: 1 1 180px; }

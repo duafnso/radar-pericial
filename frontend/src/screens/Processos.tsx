@@ -1,9 +1,10 @@
 import React from "react";
-import { BellPlus, RefreshCw, X } from "lucide-react";
+import { BellPlus, Download, RefreshCw, X } from "lucide-react";
 import { Empty, ErrorState, LoadingState } from "../components/Empty";
 import { Page } from "../components/Page";
 import { ProcessCard } from "../components/ProcessCard";
 import type { ApiClient, Processo, Screen } from "../types";
+import { downloadCsv } from "../utils/export";
 import { fmt, scoreLabel, shortDate } from "../utils/format";
 
 type Filters = {
@@ -39,11 +40,13 @@ export function Processos({
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [selected, setSelected] = React.useState<Processo | null>(null);
+  const [page, setPage] = React.useState(0);
+  const pageSize = 50;
 
   async function load() {
     setLoading(true);
     setError("");
-    const params = new URLSearchParams({ limit: "50", offset: "0" });
+    const params = new URLSearchParams({ limit: String(pageSize), offset: String(page * pageSize) });
     const effectiveRegion = region || filters.regiao;
     if (filters.faixa) params.set("faixa", filters.faixa);
     if (effectiveRegion) params.set("regiao", effectiveRegion);
@@ -72,10 +75,34 @@ export function Processos({
     notify("Não foi possível acompanhar este processo.");
   }
 
-  React.useEffect(() => { load(); }, [region, filters]);
+  React.useEffect(() => { setPage(0); }, [region, filters]);
+  React.useEffect(() => { load(); }, [region, filters, page]);
+
+  function exportCurrentPage() {
+    downloadCsv("radar-processos.csv", items, [
+      "numero_cnj",
+      "classe_processual",
+      "municipio",
+      "comarca",
+      "data_distribuicao",
+      "fase_atual",
+      "score_total",
+      "faixa_probabilidade",
+      "tipo_pericia_sugerida"
+    ]);
+  }
 
   return (
-    <Page title="Radar de Processos Judiciais" subtitle={`${fmt(total)} processos · dados da última coleta judicial`} action={<button onClick={load}><RefreshCw size={14} /> Atualizar</button>}>
+    <Page
+      title="Radar de Processos Judiciais"
+      subtitle={`${fmt(total)} processos · página ${page + 1} · dados da última coleta judicial`}
+      action={
+        <div className="button-row">
+          <button onClick={exportCurrentPage} disabled={!items.length}><Download size={14} /> CSV</button>
+          <button onClick={load}><RefreshCw size={14} /> Atualizar</button>
+        </div>
+      }
+    >
       <FilterBar filters={filters} setFilters={setFilters} />
       {error && <ErrorState text={error} retry={load} />}
       {loading ? (
@@ -94,8 +121,32 @@ export function Processos({
       ) : (
         <Empty text="Nenhum processo encontrado com estes filtros." />
       )}
+      <Pagination
+        page={page}
+        pageSize={pageSize}
+        total={total}
+        setPage={setPage}
+      />
       {selected && <ProcessModal processo={selected} close={() => setSelected(null)} follow={follow} />}
     </Page>
+  );
+}
+
+function Pagination({ page, pageSize, total, setPage }: {
+  page: number;
+  pageSize: number;
+  total: number;
+  setPage: (page: number) => void;
+}) {
+  const maxPage = Math.max(0, Math.ceil(total / pageSize) - 1);
+  return (
+    <div className="pagination-row">
+      <span>{fmt(page * pageSize + 1)}-{fmt(Math.min((page + 1) * pageSize, total))} de {fmt(total)}</span>
+      <div className="button-row">
+        <button className="secondary" disabled={page <= 0} onClick={() => setPage(page - 1)}>Anterior</button>
+        <button className="secondary" disabled={page >= maxPage} onClick={() => setPage(page + 1)}>Próxima</button>
+      </div>
+    </div>
   );
 }
 

@@ -913,13 +913,31 @@ class Database:
             conn.commit()
             return pid
 
-    def listar_usuarios(self) -> pd.DataFrame:
-        return self.query("""
+    def listar_usuarios(
+        self,
+        role: Optional[str] = None,
+        ativo: Optional[bool] = None,
+        busca: Optional[str] = None,
+    ) -> pd.DataFrame:
+        where = []
+        params = {}
+        if role:
+            where.append("role = :role")
+            params["role"] = role
+        if ativo is not None:
+            where.append("ativo = :ativo")
+            params["ativo"] = ativo
+        if busca:
+            where.append("username ILIKE :busca")
+            params["busca"] = f"%{busca}%"
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
+        return self.query(f"""
             SELECT id, username, role, ativo, regiao_foco,
                    criado_em::text AS criado_em
             FROM usuarios
+            {where_sql}
             ORDER BY id ASC
-        """)
+        """, params)
 
     def criar_usuario(
         self,
@@ -1077,16 +1095,43 @@ class Database:
         except Exception as e:
             logger.warning(f"Falha ao registrar auditoria {acao}: {e}")
 
-    def listar_auditoria(self, limit: int = 100) -> pd.DataFrame:
+    def listar_auditoria(
+        self,
+        limit: int = 100,
+        acao: Optional[str] = None,
+        ator: Optional[str] = None,
+        entidade: Optional[str] = None,
+        data_inicio: Optional[str] = None,
+        data_fim: Optional[str] = None,
+    ) -> pd.DataFrame:
+        where = []
+        params = {"limit": limit}
+        if acao:
+            where.append("acao ILIKE :acao")
+            params["acao"] = f"%{acao}%"
+        if ator:
+            where.append("ator_username ILIKE :ator")
+            params["ator"] = f"%{ator}%"
+        if entidade:
+            where.append("entidade ILIKE :entidade")
+            params["entidade"] = f"%{entidade}%"
+        if data_inicio:
+            where.append("criado_em >= :data_inicio")
+            params["data_inicio"] = data_inicio
+        if data_fim:
+            where.append("criado_em < (:data_fim::date + INTERVAL '1 day')")
+            params["data_fim"] = data_fim
+        where_sql = f"WHERE {' AND '.join(where)}" if where else ""
         return self.query(
-            """
+            f"""
             SELECT id, ator_user_id, ator_username, acao, entidade, entidade_id,
                    detalhes, ip, criado_em::text AS criado_em
             FROM auditoria_eventos
+            {where_sql}
             ORDER BY criado_em DESC
             LIMIT :limit
             """,
-            {"limit": limit},
+            params,
         )
 
     def acompanhar_processo(self, user_id: int, processo_id: int) -> bool:

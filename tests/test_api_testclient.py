@@ -149,8 +149,8 @@ class FakeDb:
             return True
         return False
 
-    def listar_usuarios(self):
-        return pd.DataFrame(
+    def listar_usuarios(self, role=None, ativo=None, busca=None):
+        rows = [
             [
                 {
                     "id": 1,
@@ -158,6 +158,30 @@ class FakeDb:
                     "role": "admin",
                     "ativo": True,
                     "regiao_foco": None,
+                    "criado_em": "2026-07-01T00:00:00",
+                }
+            ]
+        ][0]
+        if role:
+            rows = [row for row in rows if row["role"] == role]
+        if ativo is not None:
+            rows = [row for row in rows if row["ativo"] is ativo]
+        if busca:
+            rows = [row for row in rows if busca.lower() in row["username"].lower()]
+        return pd.DataFrame(rows)
+
+    def listar_auditoria(self, limit=100, acao=None, ator=None, entidade=None, data_inicio=None, data_fim=None):
+        return pd.DataFrame(
+            [
+                {
+                    "id": 1,
+                    "ator_user_id": 1,
+                    "ator_username": "admin",
+                    "acao": "login",
+                    "entidade": "usuario",
+                    "entidade_id": "1",
+                    "detalhes": {},
+                    "ip": "127.0.0.1",
                     "criado_em": "2026-07-01T00:00:00",
                 }
             ]
@@ -283,6 +307,30 @@ def test_admin_users_permission_by_role(api_client, token, expected_status):
     response = client.get("/api/admin/usuarios", headers=auth_header(token))
 
     assert response.status_code == expected_status
+
+
+def test_admin_users_accepts_filters(api_client):
+    client, _ = api_client
+
+    response = client.get(
+        "/api/admin/usuarios?role=admin&ativo=true&busca=adm",
+        headers=auth_header("token-admin"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+
+
+def test_auditoria_accepts_filters_for_admin(api_client):
+    client, _ = api_client
+
+    response = client.get(
+        "/api/admin/auditoria?acao=login&ator=admin&entidade=usuario&limit=50",
+        headers=auth_header("token-admin"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["items"][0]["acao"] == "login"
 
 
 def test_processos_endpoint_returns_items(api_client):

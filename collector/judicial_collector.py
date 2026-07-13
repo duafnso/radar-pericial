@@ -97,9 +97,14 @@ def _extract_hits(payload: dict) -> list:
 
 
 # ── DataJud / CNJ ─────────────────────────────────────────────────────
-def fetch_datajud(classe: str, dias_atras: int = 30, max_results: int = 100) -> list:
+def fetch_datajud(
+    classe: str,
+    dias_atras: int = 30,
+    max_results: int = 100,
+    data_inicio: Optional[str] = None,
+) -> list:
     url = "https://api-publica.datajud.cnj.jus.br/api_publica_tjmt/_search"
-    data_ini = _env_date("DATAJUD_START_DATE") or (datetime.now() - timedelta(days=dias_atras)).strftime("%Y-%m-%d")
+    data_ini = data_inicio or _env_date("DATAJUD_START_DATE") or (datetime.now() - timedelta(days=dias_atras)).strftime("%Y-%m-%d")
     page_size = max(10, min(_env_int("DATAJUD_PAGE_SIZE", 50), 150))
     max_total = max(page_size, _env_int("DATAJUD_MAX_RESULTS_PER_CLASS", max_results))
     request_delay = max(0.0, _env_float("DATAJUD_REQUEST_DELAY_SECONDS", 2.0))

@@ -371,6 +371,24 @@ class Database:
         CREATE INDEX IF NOT EXISTS idx_exec_coleta_status
             ON execucoes_coleta(status, iniciado_em DESC);
 
+        CREATE TABLE IF NOT EXISTS metricas_coleta_classe (
+            id SERIAL PRIMARY KEY,
+            execucao_id INT REFERENCES execucoes_coleta(id) ON DELETE CASCADE,
+            fonte TEXT NOT NULL,
+            chave TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'success',
+            registros_coletados INT DEFAULT 0,
+            registros_salvos INT DEFAULT 0,
+            descartados_sem_cnj INT DEFAULT 0,
+            duplicados INT DEFAULT 0,
+            erro TEXT,
+            criado_em TIMESTAMPTZ DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS idx_metricas_coleta_execucao
+            ON metricas_coleta_classe(execucao_id, chave);
+        CREATE INDEX IF NOT EXISTS idx_metricas_coleta_fonte
+            ON metricas_coleta_classe(fonte, criado_em DESC);
+
         CREATE TABLE IF NOT EXISTS auditoria_eventos (
             id SERIAL PRIMARY KEY,
             ator_user_id INT REFERENCES usuarios(id) ON DELETE SET NULL,
@@ -1135,6 +1153,19 @@ class Database:
             {"user_id": user_id, "limit": limit},
         )
 
+    def marcar_alerta_lido(self, user_id: int, alerta_id: int) -> bool:
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                text("""
+                    UPDATE alertas_usuario
+                    SET lido = TRUE
+                    WHERE id = :alerta_id AND user_id = :user_id
+                """),
+                {"alerta_id": alerta_id, "user_id": user_id},
+            )
+            conn.commit()
+            return result.rowcount > 0
+
     def notify_followers_for_processo(self, processo_id: int, titulo: str, mensagem: str) -> int:
         with self.engine.connect() as conn:
             result = conn.execute(
@@ -1231,6 +1262,80 @@ class Database:
                 },
             )
             conn.commit()
+
+    def tem_coleta_em_execucao(self, fonte: str, max_age_minutes: int = 240) -> bool:
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT 1
+                    FROM execucoes_coleta
+                    WHERE fonte = :fonte
+                      AND status = 'running'
+                      AND iniciado_em >= NOW() - (:max_age_minutes * INTERVAL '1 minute')
+                    LIMIT 1
+                """),
+                {"fonte": fonte, "max_age_minutes": max(1, int(max_age_minutes))},
+            ).fetchone()
+            return bool(row)
+
+    def registrar_metrica_coleta_classe(
+        self,
+        execucao_id: int,
+        fonte: str,
+        chave: str,
+        registros_coletados: int = 0,
+        registros_salvos: int = 0,
+        descartados_sem_cnj: int = 0,
+        duplicados: int = 0,
+        status: str = "success",
+        erro: Optional[str] = None,
+    ) -> None:
+        if not execucao_id:
+            return
+        with self.engine.connect() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO metricas_coleta_classe (
+                        execucao_id, fonte, chave, status, registros_coletados,
+                        registros_salvos, descartados_sem_cnj, duplicados, erro
+                    )
+                    VALUES (
+                        :execucao_id, :fonte, :chave, :status, :coletados,
+                        :salvos, :sem_cnj, :duplicados, :erro
+                    )
+                """),
+                {
+                    "execucao_id": execucao_id,
+                    "fonte": fonte,
+                    "chave": chave[:180],
+                    "status": status,
+                    "coletados": max(0, int(registros_coletados or 0)),
+                    "salvos": max(0, int(registros_salvos or 0)),
+                    "sem_cnj": max(0, int(descartados_sem_cnj or 0)),
+                    "duplicados": max(0, int(duplicados or 0)),
+                    "erro": (erro or "")[:2000] if erro else None,
+                },
+            )
+            conn.commit()
+
+    def datajud_data_inicio_incremental(
+        self,
+        default_start: Optional[str] = None,
+        overlap_days: int = 7,
+    ) -> Optional[str]:
+        if default_start:
+            return default_start
+        overlap_days = max(0, min(int(overlap_days), 60))
+        with self.engine.connect() as conn:
+            row = conn.execute(
+                text("""
+                    SELECT (MAX(data_distribuicao) - (:overlap_days * INTERVAL '1 day'))::date::text
+                    FROM processos
+                    WHERE origem ILIKE '%DataJud%' AND data_distribuicao IS NOT NULL
+                """),
+                {"overlap_days": overlap_days},
+            ).fetchone()
+            return row[0] if row and row[0] else None
 
     def listar_execucoes_coleta(self, limit: int = 50) -> pd.DataFrame:
         return self.query(

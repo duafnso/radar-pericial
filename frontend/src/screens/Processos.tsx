@@ -6,7 +6,14 @@ import { ProcessCard } from "../components/ProcessCard";
 import type { ApiClient, Processo, Screen } from "../types";
 import { fmt, scoreLabel, shortDate } from "../utils/format";
 
-type Filters = { faixa: string; regiao: string; municipio: string; classe: string };
+type Filters = {
+  faixa: string;
+  regiao: string;
+  municipio: string;
+  classe: string;
+  dataInicio: string;
+  dataFim: string;
+};
 
 export function Processos({
   api,
@@ -21,7 +28,14 @@ export function Processos({
 }) {
   const [items, setItems] = React.useState<Processo[]>([]);
   const [total, setTotal] = React.useState(0);
-  const [filters, setFilters] = React.useState<Filters>({ faixa: "", regiao: "", municipio: "", classe: "" });
+  const [filters, setFilters] = React.useState<Filters>({
+    faixa: "",
+    regiao: "",
+    municipio: "",
+    classe: "",
+    dataInicio: "2026-01-01",
+    dataFim: ""
+  });
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState("");
   const [selected, setSelected] = React.useState<Processo | null>(null);
@@ -35,6 +49,8 @@ export function Processos({
     if (effectiveRegion) params.set("regiao", effectiveRegion);
     if (filters.municipio) params.set("municipio", filters.municipio);
     if (filters.classe) params.set("classe", filters.classe);
+    if (filters.dataInicio) params.set("data_inicio", filters.dataInicio);
+    if (filters.dataFim) params.set("data_fim", filters.dataFim);
     const data = await api.get<any>(`/api/processos?${params.toString()}`);
     if (!data) setError("Não foi possível carregar os processos.");
     setItems(data?.items || []);
@@ -107,6 +123,14 @@ function FilterBar({ filters, setFilters }: {
       </select>
       <input placeholder="Município" value={filters.municipio} onChange={(event) => setFilters({ ...filters, municipio: event.target.value })} />
       <input placeholder="Classe processual" value={filters.classe} onChange={(event) => setFilters({ ...filters, classe: event.target.value })} />
+      <label className="field-compact">
+        <span>De</span>
+        <input type="date" value={filters.dataInicio} onChange={(event) => setFilters({ ...filters, dataInicio: event.target.value })} />
+      </label>
+      <label className="field-compact">
+        <span>Até</span>
+        <input type="date" value={filters.dataFim} onChange={(event) => setFilters({ ...filters, dataFim: event.target.value })} />
+      </label>
     </div>
   );
 }

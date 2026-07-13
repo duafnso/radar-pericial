@@ -109,6 +109,7 @@ async def lifespan(app: FastAPI):
     logger.info("[LIFESPAN] Iniciando aplicacao...")
     
     try:
+        _assert_production_config()
         # 1. Inicializa o banco de dados
         init_db()
         _db = Database()
@@ -164,6 +165,26 @@ def _parse_cors_origins() -> list[str]:
     if _is_production() and "*" in origins:
         raise RuntimeError("CORS_ALLOW_ORIGINS nÃ£o pode conter '*' em produÃ§Ã£o.")
     return origins
+
+
+def _assert_production_config() -> None:
+    if not _is_production():
+        return
+
+    def _strong_secret(name: str) -> None:
+        value = (os.getenv(name) or "").strip()
+        weak_values = {"", "change-me", "change-me-in-production", "dev-token-pepper"}
+        if value in weak_values or len(value) < 32:
+            raise RuntimeError(f"{name} deve ser forte e ter pelo menos 32 caracteres em producao.")
+
+    _strong_secret("SECRET_KEY")
+    _strong_secret("SESSION_TOKEN_PEPPER")
+    if not (os.getenv("DATAJUD_API_KEY") or "").strip():
+        raise RuntimeError("DATAJUD_API_KEY deve ser definido em producao.")
+    if (os.getenv("DEFAULT_ADMIN_PASSWORD") or "").strip():
+        logger.warning(
+            "DEFAULT_ADMIN_PASSWORD definido em producao; use apenas no bootstrap inicial e remova depois."
+        )
 
 
 api_docs_enabled = (not _is_production()) or _env_enabled("ENABLE_API_DOCS", False)
@@ -610,6 +631,7 @@ async def stats(regiao: Optional[str] = Query(None), _user: AuthUser = None):
 async def processos(
     faixa: Optional[str] = Query(None), municipio: Optional[str] = Query(None),
     regiao: Optional[str] = Query(None), classe: Optional[str] = Query(None),
+    data_inicio: Optional[str] = Query(None), data_fim: Optional[str] = Query(None),
     limit: int = Query(20, le=500), offset: int = Query(0), _user: AuthUser = None
 ):
     try:
@@ -619,6 +641,8 @@ async def processos(
         if municipio: w.append("p.municipio ILIKE :mun"); p["mun"] = f"%{municipio}%"
         if regiao: w.append("p.regiao_imea = :regiao"); p["regiao"] = regiao
         if classe: w.append("p.classe_processual ILIKE :classe"); p["classe"] = f"%{classe}%"
+        if data_inicio: w.append("p.data_distribuicao >= :data_inicio"); p["data_inicio"] = data_inicio
+        if data_fim: w.append("p.data_distribuicao <= :data_fim"); p["data_fim"] = data_fim
         where = ("WHERE " + " AND ".join(w)) if w else ""
         sql = f"""
             SELECT p.id, p.numero_cnj, p.tribunal, p.comarca, p.vara,
@@ -895,6 +919,29 @@ async def alertas(limit: int = Query(40, le=200), _user: AuthUser = None):
         return {"total": 0, "items": []}
 
 
+@app.patch("/api/alertas/{alerta_id}/lido")
+async def marcar_alerta_lido(alerta_id: int, request: Request, _user: AuthUser):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        ok = _db.marcar_alerta_lido(int(_user["id"]), alerta_id)
+        if not ok:
+            raise HTTPException(status_code=404, detail="Alerta nao encontrado")
+        _audit_request(
+            request,
+            "alerta_lido",
+            ator=_user,
+            entidade="alerta_usuario",
+            entidade_id=str(alerta_id),
+        )
+        return {"status": "ok"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"marcar_alerta_lido: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao marcar alerta como lido")
+
+
 @app.get("/api/coletas/status")
 async def coletas_status(limit: int = Query(50, le=200), _user: ReadOperationalUser = None):
     try:
@@ -936,6 +983,11 @@ async def executar_coleta(tipo: str, request: Request, _admin: RunCollectionsUse
         }
         if tipo not in tasks:
             raise HTTPException(status_code=400, detail="Tipo de coleta invÃ¡lido")
+        if _db and _db.tem_coleta_em_execucao(tipo):
+            raise HTTPException(
+                status_code=409,
+                detail="Ja existe uma coleta deste tipo em execucao. Aguarde finalizar antes de iniciar outra.",
+            )
         result = tasks[tipo]()
         _audit_request(
             request,

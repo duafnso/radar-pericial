@@ -21,6 +21,7 @@ def test_fetch_datajud_200_normalizes_process(requests_mock, monkeypatch):
     monkeypatch.setenv("DATAJUD_PAGE_SIZE", "50")
     monkeypatch.setenv("DATAJUD_MAX_RESULTS_PER_CLASS", "50")
     monkeypatch.setenv("DATAJUD_REQUEST_DELAY_SECONDS", "0")
+    monkeypatch.setenv("DATAJUD_START_DATE", "2026-01-01")
 
     requests_mock.post(
         "https://api-publica.datajud.cnj.jus.br/api_publica_tjmt/_search",
@@ -31,6 +32,8 @@ def test_fetch_datajud_200_normalizes_process(requests_mock, monkeypatch):
     processos = collector.fetch_datajud("Desapropriacao", dias_atras=1, max_results=50)
 
     assert len(processos) == 1
+    sent = requests_mock.last_request.json()
+    assert sent["query"]["bool"]["must"][0]["range"]["dataAjuizamento"]["gte"] == "2026-01-01"
     assert processos[0]["numero_cnj"] == "0000001-00.2026.8.11.0001"
     assert processos[0]["tribunal"] == "TJMT"
     assert processos[0]["municipio"] == "Cuiaba"
@@ -55,6 +58,8 @@ def test_fetch_datajud_429_returns_empty_list(requests_mock, monkeypatch):
     import collector.judicial_collector as collector
 
     monkeypatch.setenv("DATAJUD_REQUEST_DELAY_SECONDS", "0")
+    monkeypatch.setenv("DATAJUD_429_COOLDOWN_SECONDS", "0")
+    monkeypatch.setenv("DATAJUD_MAX_429_RETRIES", "0")
     requests_mock.post(
         "https://api-publica.datajud.cnj.jus.br/api_publica_tjmt/_search",
         json={"error": "too_many_requests"},
@@ -62,6 +67,23 @@ def test_fetch_datajud_429_returns_empty_list(requests_mock, monkeypatch):
     )
 
     assert collector.fetch_datajud("Desapropriacao", dias_atras=1) == []
+
+
+def test_fetch_datajud_explicit_start_date_overrides_environment(requests_mock, monkeypatch):
+    import collector.judicial_collector as collector
+
+    monkeypatch.setenv("DATAJUD_START_DATE", "2026-01-01")
+    monkeypatch.setenv("DATAJUD_REQUEST_DELAY_SECONDS", "0")
+    requests_mock.post(
+        "https://api-publica.datajud.cnj.jus.br/api_publica_tjmt/_search",
+        json={"hits": {"hits": []}},
+        status_code=200,
+    )
+
+    collector.fetch_datajud("Desapropriacao", dias_atras=1, data_inicio="2026-07-01")
+
+    sent = requests_mock.last_request.json()
+    assert sent["query"]["bool"]["must"][0]["range"]["dataAjuizamento"]["gte"] == "2026-07-01"
 
 
 def test_fetch_datajud_timeout_returns_empty_list(monkeypatch):

@@ -215,6 +215,53 @@ def test_atualizar_execucao_coleta_ignores_empty_id():
     assert conn.commits == 0
 
 
+def test_tem_coleta_em_execucao_returns_true_for_running_collection():
+    conn = FakeConnection(fetch_rows=[(1,)])
+    db = make_db(conn)
+
+    assert db.tem_coleta_em_execucao("judicial") is True
+    assert "FROM execucoes_coleta" in conn.executed[0][0]
+    assert conn.executed[0][1]["fonte"] == "judicial"
+
+
+def test_registrar_metrica_coleta_classe_inserts_metrics():
+    conn = FakeConnection()
+    db = make_db(conn)
+
+    db.registrar_metrica_coleta_classe(
+        execucao_id=99,
+        fonte="judicial",
+        chave="desapropriacao",
+        registros_coletados=20,
+        registros_salvos=18,
+        descartados_sem_cnj=1,
+        duplicados=1,
+    )
+
+    assert "INSERT INTO metricas_coleta_classe" in conn.executed[0][0]
+    assert conn.executed[0][1]["execucao_id"] == 99
+    assert conn.executed[0][1]["duplicados"] == 1
+    assert conn.commits == 1
+
+
+def test_datajud_data_inicio_incremental_prefers_configured_start():
+    conn = FakeConnection()
+    db = make_db(conn)
+
+    assert db.datajud_data_inicio_incremental("2026-01-01") == "2026-01-01"
+    assert conn.executed == []
+
+
+def test_marcar_alerta_lido_updates_user_alert():
+    conn = FakeConnection()
+    db = make_db(conn)
+
+    assert db.marcar_alerta_lido(user_id=3, alerta_id=7) is True
+    assert "UPDATE alertas_usuario" in conn.executed[0][0]
+    assert conn.executed[0][1] == {"alerta_id": 7, "user_id": 3}
+    assert conn.commits == 1
+
+
 def test_cleanup_expired_sessions_deletes_old_expired_or_revoked_sessions():
     conn = FakeConnection()
     db = make_db(conn)

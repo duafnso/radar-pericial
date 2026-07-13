@@ -176,6 +176,7 @@ def task_judicial(self, dias_atras: int = 1):
             CLASSES_ALVO,
             JudicialCollector,
             _env_enabled,
+            _env_date,
             _env_int,
             fetch_datajud,
         )
@@ -194,26 +195,56 @@ def task_judicial(self, dias_atras: int = 1):
         if _env_enabled("ENABLE_SOURCE_DATAJUD", True):
             max_per_class = _env_int("DATAJUD_MAX_RESULTS_PER_CLASS", 1200)
             class_limit = max(1, min(_env_int("DATAJUD_CLASSES_LIMIT", 4), len(CLASSES_ALVO)))
+            configured_start = _env_date("DATAJUD_START_DATE")
+            data_inicio = db.datajud_data_inicio_incremental(
+                configured_start,
+                overlap_days=_env_int("DATAJUD_INCREMENTAL_OVERLAP_DAYS", 7),
+            )
             for classe in CLASSES_ALVO[:class_limit]:
-                lote = fetch_datajud(classe, dias_atras=dias_atras, max_results=max_per_class)
+                lote = fetch_datajud(
+                    classe,
+                    dias_atras=dias_atras,
+                    max_results=max_per_class,
+                    data_inicio=data_inicio,
+                )
                 coletados += len(lote)
                 novos = []
+                sem_cnj = 0
+                duplicados = 0
                 for proc in lote:
                     cnj = proc.get("numero_cnj")
-                    if cnj and cnj not in vistos:
-                        vistos.add(cnj)
-                        novos.append(proc)
-                salvos += _save_judicial_processos(db, novos)
+                    if not cnj:
+                        sem_cnj += 1
+                        continue
+                    if cnj in vistos:
+                        duplicados += 1
+                        continue
+                    vistos.add(cnj)
+                    novos.append(proc)
+                salvos_classe = _save_judicial_processos(db, novos)
+                salvos += salvos_classe
+                db.registrar_metrica_coleta_classe(
+                    execucao_id=execucao_id,
+                    fonte="judicial",
+                    chave=classe,
+                    registros_coletados=len(lote),
+                    registros_salvos=salvos_classe,
+                    descartados_sem_cnj=sem_cnj,
+                    duplicados=duplicados,
+                )
                 db.atualizar_execucao_coleta(
                     execucao_id,
                     registros_coletados=coletados,
                     registros_salvos=salvos,
                 )
                 logger.info(
-                    "task_judicial parcial: classe='%s', coletados=%s, salvos=%s",
+                    "task_judicial parcial: classe='%s', data_inicio=%s, coletados=%s, salvos=%s, sem_cnj=%s, duplicados=%s",
                     classe,
+                    data_inicio or "janela_por_dias",
                     coletados,
                     salvos,
+                    sem_cnj,
+                    duplicados,
                 )
         else:
             res = JudicialCollector().run(dias_atras=dias_atras)

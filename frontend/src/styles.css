@@ -84,9 +84,13 @@ textarea { min-height: 130px; resize: vertical; }
 .status-block.critical strong { color: var(--alert); }
 .status-block.medium strong { color: var(--sand); }
 .status-block.high strong { color: var(--field); }
+.alert-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; }
+.alert-row.read { opacity: .62; }
 .action-list, .button-row, .filters { display: flex; gap: 10px; flex-wrap: wrap; }
 .filters { background: var(--white); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
 .filters > * { flex: 1 1 180px; }
+.field-compact { display: grid; gap: 5px; }
+.field-compact span { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 
 .table-wrap { overflow-x: auto; background: var(--white); border: 1px solid var(--line); border-radius: 8px; }
 table { width: 100%; border-collapse: collapse; min-width: 760px; }

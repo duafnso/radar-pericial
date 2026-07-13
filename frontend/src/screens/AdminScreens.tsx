@@ -1,5 +1,5 @@
 import React from "react";
-import { Bell, FileText, RefreshCw } from "lucide-react";
+import { Bell, CheckCircle2, FileText, RefreshCw } from "lucide-react";
 import { CardLine } from "../components/CardLine";
 import { Empty, ErrorState, LoadingState } from "../components/Empty";
 import { Page } from "../components/Page";
@@ -58,12 +58,23 @@ export function Administrativo({ api }: { api: ApiClient }) {
 export function Alertas({ api }: { api: ApiClient }) {
   const [items, setItems] = React.useState<any[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState("");
 
   async function load() {
     setLoading(true);
+    setError("");
     const data = await api.get<any>("/api/alertas?limit=80");
+    if (!data) setError("Não foi possível carregar alertas.");
     setItems(data?.items || []);
     setLoading(false);
+  }
+
+  async function markRead(item: any) {
+    if (!item.id || item.origem_alerta !== "processo_acompanhado") return;
+    const result = await api.patch<any>(`/api/alertas/${item.id}/lido`, {});
+    if (result?.status === "ok") {
+      setItems((current) => current.map((row) => row.id === item.id ? { ...row, lido: true } : row));
+    }
   }
 
   React.useEffect(() => { load(); }, []);
@@ -73,17 +84,24 @@ export function Alertas({ api }: { api: ApiClient }) {
 
   return (
     <Page title="Central de Alertas" subtitle={`${fmt(items.length)} alertas e oportunidades recentes`} action={<button onClick={load}><RefreshCw size={14} /> Atualizar</button>}>
+      {error && <ErrorState text={error} retry={load} />}
       {loading ? <LoadingState text="Carregando alertas..." /> : (
         <div className="two-col">
           <section className="card">
             <div className="section-label"><Bell size={14} /> Processos acompanhados</div>
             <div className="stack">
               {tracked.length ? tracked.map((item) => (
-                <CardLine
-                  key={item.id}
-                  title={item.titulo || "Alerta de processo"}
-                  meta={`${item.numero_cnj || "CNJ pendente"} · ${item.municipio || item.comarca || "Local pendente"} · ${shortDate(item.criado_em)}`}
-                />
+                <div className={item.lido ? "alert-row read" : "alert-row"} key={item.id}>
+                  <CardLine
+                    title={item.titulo || "Alerta de processo"}
+                    meta={`${item.numero_cnj || "CNJ pendente"} · ${item.municipio || item.comarca || "Local pendente"} · ${shortDate(item.criado_em)}`}
+                  />
+                  {!item.lido && (
+                    <button className="secondary" onClick={() => markRead(item)}>
+                      <CheckCircle2 size={14} /> Lido
+                    </button>
+                  )}
+                </div>
               )) : <Empty text="Nenhum processo acompanhado gerou alerta ainda." />}
             </div>
           </section>

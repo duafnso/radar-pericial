@@ -10,6 +10,8 @@ class FakeDb:
     def __init__(self):
         self.audit_events = []
         self.revoked = []
+        self.collection_running = False
+        self.read_alerts = []
         self.tokens = {
             "token-admin": {"id": 1, "username": "admin", "role": "admin"},
             "token-operator": {"id": 2, "username": "operator", "role": "operator"},
@@ -89,6 +91,9 @@ class FakeDb:
             ]
         )
 
+    def tem_coleta_em_execucao(self, fonte, max_age_minutes=240):
+        return self.collection_running
+
     def resumo_execucoes_coleta(self):
         return pd.DataFrame(
             [
@@ -103,6 +108,46 @@ class FakeDb:
                 }
             ]
         )
+
+    def acompanhar_processo(self, user_id, processo_id):
+        return processo_id == 10
+
+    def listar_processos_acompanhados(self, user_id, limit=100):
+        return pd.DataFrame(
+            [
+                {
+                    "id": 1,
+                    "processo_id": 10,
+                    "numero_cnj": "0000001-00.2026.8.11.0001",
+                    "classe_processual": "Desapropriacao",
+                    "municipio": "Cuiaba",
+                    "criado_em": "2026-07-03T08:00:00",
+                }
+            ]
+        )
+
+    def listar_alertas_usuario(self, user_id, limit=100):
+        return pd.DataFrame(
+            [
+                {
+                    "id": 7,
+                    "tipo": "processo",
+                    "titulo": "Processo acompanhado",
+                    "mensagem": "Houve movimentacao no processo.",
+                    "lido": False,
+                    "criado_em": "2026-07-03T08:00:00",
+                    "processo_id": 10,
+                    "numero_cnj": "0000001-00.2026.8.11.0001",
+                    "municipio": "Cuiaba",
+                }
+            ]
+        )
+
+    def marcar_alerta_lido(self, user_id, alerta_id):
+        if alerta_id == 7:
+            self.read_alerts.append((user_id, alerta_id))
+            return True
+        return False
 
     def listar_usuarios(self):
         return pd.DataFrame(
@@ -320,3 +365,45 @@ def test_manual_collection_enqueue_is_mocked(api_client, monkeypatch):
     }
     assert delayed == [("judicial", {"dias_atras": 1})]
     assert fake_db.audit_events[-1]["acao"] == "coleta_manual_enfileirada"
+
+
+def test_manual_collection_rejects_duplicate_running_collection(api_client, monkeypatch):
+    client, fake_db = api_client
+    fake_db.collection_running = True
+
+    monkeypatch.setitem(
+        sys.modules,
+        "alerts.scheduler",
+        SimpleNamespace(
+            task_admin=SimpleNamespace(delay=lambda **kwargs: None),
+            task_geo=SimpleNamespace(delay=lambda **kwargs: None),
+            task_judicial=SimpleNamespace(delay=lambda **kwargs: None),
+            task_score=SimpleNamespace(delay=lambda **kwargs: None),
+        ),
+    )
+
+    response = client.post(
+        "/api/coletas/judicial/executar",
+        headers=auth_header("token-operator"),
+        json={},
+    )
+
+    assert response.status_code == 409
+    assert "coleta deste tipo" in response.json()["detail"]
+
+
+def test_follow_process_and_alerts_flow(api_client):
+    client, fake_db = api_client
+
+    followed = client.post(
+        "/api/processos/10/acompanhar",
+        headers=auth_header("token-user"),
+    )
+    alerts = client.get("/api/alertas?limit=10", headers=auth_header("token-user"))
+    read = client.patch("/api/alertas/7/lido", headers=auth_header("token-user"), json={})
+
+    assert followed.status_code == 200
+    assert alerts.status_code == 200
+    assert alerts.json()["items"][0]["origem_alerta"] == "processo_acompanhado"
+    assert read.status_code == 200
+    assert fake_db.read_alerts == [(3, 7)]

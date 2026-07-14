@@ -1,0 +1,164 @@
+﻿name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      smoke_base_url:
+        description: "URL de homologacao para smoke test opcional"
+        required: false
+        type: string
+
+jobs:
+  python-tests:
+    name: Python checks and tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gdal-bin libgdal-dev libpq-dev gcc g++
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Compile Python modules
+        run: |
+          python -m py_compile \
+            api/main.py \
+            database/db.py \
+            alerts/scheduler.py \
+            collector/judicial_collector.py \
+            collector/admin_collector.py \
+            collector/multi_source_collector.py \
+            etl/geospatial_etl.py \
+            intelligence/taxonomy.py \
+            tools/apply_migrations.py \
+            tools/smoke_test.py
+
+      - name: Run tests
+        env:
+          APP_ENV: test
+          SESSION_TOKEN_PEPPER: ci-session-token-pepper-not-for-production
+          SECRET_KEY: ci-secret-key-not-for-production
+        run: python -m pytest
+
+  postgis-integration:
+    name: PostgreSQL/PostGIS integration
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: radar_pericial_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d radar_pericial_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gdal-bin libgdal-dev libpq-dev gcc g++
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: Apply SQL migrations
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/radar_pericial_test
+        run: python tools/apply_migrations.py
+
+      - name: Run PostGIS integration tests
+        env:
+          RUN_POSTGIS_INTEGRATION: "true"
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/radar_pericial_test
+          APP_ENV: test
+          SESSION_TOKEN_PEPPER: ci-session-token-pepper-not-for-production
+          SECRET_KEY: ci-secret-key-not-for-production
+        run: python -m pytest tests/integration
+  frontend-build:
+    name: Frontend build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run frontend:build
+
+  docker-build:
+    name: Docker image build
+    runs-on: ubuntu-latest
+    needs: [python-tests, postgis-integration, frontend-build]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build production image
+        run: docker build -t radar-pericial-ci .
+
+  smoke-homologacao:
+    name: Optional homologation smoke test
+    runs-on: ubuntu-latest
+    needs: [docker-build]
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.smoke_base_url != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install smoke dependencies
+        run: python -m pip install requests
+
+      - name: Run smoke test
+        env:
+          RADAR_SMOKE_USER: ${{ secrets.RADAR_SMOKE_USER }}
+          RADAR_SMOKE_PASSWORD: ${{ secrets.RADAR_SMOKE_PASSWORD }}
+        run: python tools/smoke_test.py --base-url "${{ inputs.smoke_base_url }}"
+

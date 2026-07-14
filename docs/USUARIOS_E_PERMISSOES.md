@@ -26,7 +26,7 @@ O controle de acesso inicial do Radar Pericial usa um campo `role` na tabela
 
 ## Usuario admin inicial
 
-Quando `DEFAULT_ADMIN_PASSWORD` esta definido no ambiente, o startup cria ou
+Quando `DEFAULT_ADMIN_PASSWORD` esta definido no ambiente, o startup cria o admin se ele ainda nao existir. Por padrao, ele nao redefine senha existente. Para reset local controlado, use `RESET_DEFAULT_ADMIN_PASSWORD=true` fora de producao. Texto historico: o startup cria ou
 atualiza o usuario `admin` com `role='admin'`.
 
 Em producao:
@@ -148,3 +148,4 @@ Roles aceitos:
 
 - Adicionar filtros por role/status na tela de usuarios.
 - Exibir mensagens de permissao mais especificas por tela.
+

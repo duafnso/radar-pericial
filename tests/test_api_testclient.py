@@ -1,4 +1,4 @@
-import sys
+﻿import sys
 from types import SimpleNamespace
 
 import pandas as pd
@@ -213,6 +213,8 @@ def api_client(monkeypatch):
 
     fake_db = FakeDb()
     main_module._LOGIN_FAILURES.clear()
+    main_module._ACTION_FAILURES.clear()
+    monkeypatch.setenv("RATE_LIMIT_BACKEND", "memory")
     monkeypatch.setattr(main_module, "_db", fake_db)
     return TestClient(main_module.app), fake_db
 
@@ -489,3 +491,35 @@ def test_follow_process_and_alerts_flow(api_client):
     assert alerts.json()["items"][0]["origem_alerta"] == "processo_acompanhado"
     assert read.status_code == 200
     assert fake_db.read_alerts == [(3, 7)]
+
+
+def test_sensitive_action_rate_limit_blocks_collection(api_client, monkeypatch):
+    client, _ = api_client
+    monkeypatch.setenv("SENSITIVE_ACTION_MAX_ATTEMPTS", "1")
+    monkeypatch.setenv("SENSITIVE_ACTION_WINDOW_SECONDS", "300")
+
+    delayed = []
+
+    class FakeTask:
+        def delay(self, **kwargs):
+            delayed.append(kwargs)
+            return SimpleNamespace(id="task-id")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "alerts.scheduler",
+        SimpleNamespace(
+            task_admin=FakeTask(),
+            task_geo=FakeTask(),
+            task_judicial=FakeTask(),
+            task_score=FakeTask(),
+        ),
+    )
+
+    first = client.post("/api/coletas/score/executar", headers=auth_header("token-operator"), json={})
+    second = client.post("/api/coletas/score/executar", headers=auth_header("token-operator"), json={})
+
+    assert first.status_code == 200
+    assert second.status_code == 429
+
+

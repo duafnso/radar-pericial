@@ -52,6 +52,8 @@ from intelligence.taxonomy import calcular_score, TAXONOMIA, REGIOES_IMEA
 # â”€â”€ InstÃ¢ncia global do banco â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 _db: Optional[Database] = None
 _LOGIN_FAILURES: dict[str, list[float]] = {}
+_ACTION_FAILURES: dict[str, list[float]] = {}
+_redis_rate_limiter = None
 
 
 # â”€â”€ Carregamento AutomÃ¡tico de Dados Demo â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -196,6 +198,82 @@ def _login_limits() -> tuple[int, int]:
     return max_attempts, window_seconds
 
 
+def _sensitive_action_limits() -> tuple[int, int]:
+    max_attempts = int(os.getenv("SENSITIVE_ACTION_MAX_ATTEMPTS", "20"))
+    window_seconds = int(os.getenv("SENSITIVE_ACTION_WINDOW_SECONDS", "300"))
+    return max_attempts, window_seconds
+
+
+def _rate_limit_backend() -> str:
+    configured = os.getenv("RATE_LIMIT_BACKEND", "").strip().lower()
+    if configured:
+        return configured
+    return "redis" if _is_production() else "memory"
+
+
+def _get_redis_rate_limiter():
+    global _redis_rate_limiter
+    if _redis_rate_limiter is False:
+        return None
+    if _redis_rate_limiter is not None:
+        return _redis_rate_limiter
+    try:
+        import redis
+        _redis_rate_limiter = redis.from_url(
+            os.getenv("REDIS_URL", "redis://redis:6379/0"),
+            socket_connect_timeout=1,
+            socket_timeout=1,
+            decode_responses=True,
+        )
+        _redis_rate_limiter.ping()
+        return _redis_rate_limiter
+    except Exception as e:
+        logger.warning("Rate limit Redis indisponivel; usando memoria local: %s", e)
+        _redis_rate_limiter = False
+        return None
+
+
+def _memory_rate_count(
+    store: dict[str, list[float]],
+    key: str,
+    window_seconds: int,
+    increment: bool,
+) -> int:
+    now = time.monotonic()
+    events = [ts for ts in store.get(key, []) if now - ts <= window_seconds]
+    if increment:
+        events.append(now)
+    if events:
+        store[key] = events
+    else:
+        store.pop(key, None)
+    return len(events)
+
+
+def _rate_count(key: str, window_seconds: int, increment: bool, store: dict[str, list[float]]) -> int:
+    if _rate_limit_backend() == "redis":
+        client = _get_redis_rate_limiter()
+        if client is not None:
+            redis_key = f"radar:rate:{key}"
+            if increment:
+                count = int(client.incr(redis_key))
+                if count == 1:
+                    client.expire(redis_key, window_seconds)
+                return count
+            value = client.get(redis_key)
+            return int(value or 0)
+    return _memory_rate_count(store, key, window_seconds, increment)
+
+
+def _rate_clear(key: str, store: dict[str, list[float]]) -> None:
+    if _rate_limit_backend() == "redis":
+        client = _get_redis_rate_limiter()
+        if client is not None:
+            client.delete(f"radar:rate:{key}")
+            return
+    store.pop(key, None)
+
+
 def _login_key(request: Request, username: str) -> str:
     client_ip = request.client.host if request.client else "unknown"
     return f"{client_ip}:{username.strip().lower()}"
@@ -216,8 +294,8 @@ def _prune_login_failures(key: str, now: float, window_seconds: int) -> list[flo
 def _assert_login_allowed(request: Request, username: str) -> str:
     max_attempts, window_seconds = _login_limits()
     key = _login_key(request, username)
-    failures = _prune_login_failures(key, time.monotonic(), window_seconds)
-    if len(failures) >= max_attempts:
+    failures = _rate_count(f"login:{key}", window_seconds, increment=False, store=_LOGIN_FAILURES)
+    if failures >= max_attempts:
         raise HTTPException(
             status_code=429,
             detail="Muitas tentativas de login. Tente novamente mais tarde.",
@@ -226,11 +304,25 @@ def _assert_login_allowed(request: Request, username: str) -> str:
 
 
 def _record_login_failure(key: str) -> None:
-    _LOGIN_FAILURES.setdefault(key, []).append(time.monotonic())
+    _, window_seconds = _login_limits()
+    _rate_count(f"login:{key}", window_seconds, increment=True, store=_LOGIN_FAILURES)
 
 
 def _clear_login_failures(key: str) -> None:
-    _LOGIN_FAILURES.pop(key, None)
+    _rate_clear(f"login:{key}", _LOGIN_FAILURES)
+
+
+def _assert_sensitive_action_allowed(request: Request, scope: str, actor: Optional[dict]) -> None:
+    max_attempts, window_seconds = _sensitive_action_limits()
+    client_ip = request.client.host if request.client else "unknown"
+    actor_id = actor.get("id") if actor else "anonymous"
+    key = f"action:{scope}:{actor_id}:{client_ip}"
+    count = _rate_count(key, window_seconds, increment=True, store=_ACTION_FAILURES)
+    if count > max_attempts:
+        raise HTTPException(
+            status_code=429,
+            detail="Muitas acoes sensiveis em curto periodo. Tente novamente mais tarde.",
+        )
 
 
 app = FastAPI(
@@ -996,6 +1088,7 @@ async def coletas_metricas(
 @app.post("/api/coletas/{tipo}/executar")
 async def executar_coleta(tipo: str, request: Request, _admin: RunCollectionsUser):
     try:
+        _assert_sensitive_action_allowed(request, "coleta_manual", _admin)
         from alerts.scheduler import task_admin, task_geo, task_judicial, task_score
 
         tasks = {
@@ -1195,4 +1288,8 @@ async def admin_listar_auditoria(
     except Exception as e:
         logger.error(f"admin_listar_auditoria: {e}")
         raise HTTPException(status_code=500, detail="Erro ao listar auditoria")
+
+
+
+
 

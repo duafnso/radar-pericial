@@ -1,7 +1,7 @@
-"""
-alerts/scheduler.py — Celery Beat
-Agendamento automático de todas as coletas do Radar Pericial.
-Horários em fuso America/Cuiaba.
+﻿"""
+alerts/scheduler.py â€” Celery Beat
+Agendamento automÃ¡tico de todas as coletas do Radar Pericial.
+HorÃ¡rios em fuso America/Cuiaba.
 """
 
 import logging
@@ -29,26 +29,27 @@ app.conf.update(
         "alerts.scheduler.task_score":    {"queue": "default"},
         "alerts.scheduler.task_alerta":   {"queue": "default"},
         "alerts.scheduler.task_cleanup_sessions": {"queue": "default"},
+        "alerts.scheduler.task_cleanup_operational_history": {"queue": "default"},
     },
     beat_schedule={
-        # Geoespacial — a cada 12 horas
+        # Geoespacial â€” a cada 12 horas
         "coletar-geo": {
             "task": "alerts.scheduler.task_geo",
             "schedule": crontab(minute=0, hour="*/12"),
         },
-        # Processos judiciais — todo dia às 06:00
+        # Processos judiciais â€” todo dia Ã s 06:00
         "coletar-judicial": {
             "task": "alerts.scheduler.task_judicial",
             "schedule": crontab(minute=0, hour=6),
             "kwargs": {"dias_atras": 1},
         },
-        # Eventos administrativos — todo dia às 07:00
+        # Eventos administrativos â€” todo dia Ã s 07:00
         "coletar-admin": {
             "task": "alerts.scheduler.task_admin",
             "schedule": crontab(minute=0, hour=7),
             "kwargs": {"dias_atras": 2},
         },
-        # Recalcula scores — todo dia às 08:00
+        # Recalcula scores â€” todo dia Ã s 08:00
         "recalcular-scores": {
             "task": "alerts.scheduler.task_score",
             "schedule": crontab(minute=0, hour=8),
@@ -57,11 +58,15 @@ app.conf.update(
             "task": "alerts.scheduler.task_cleanup_sessions",
             "schedule": crontab(minute=30, hour=3),
         },
+        "limpar-historico-operacional": {
+            "task": "alerts.scheduler.task_cleanup_operational_history",
+            "schedule": crontab(minute=45, hour=3),
+        },
     },
 )
 
 
-# ── Tarefa: coleta geoespacial ─────────────────────────────────────────
+# â”€â”€ Tarefa: coleta geoespacial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 def _safe_len(value) -> int:
     try:
         return len(value) if value is not None else 0
@@ -118,6 +123,19 @@ def task_cleanup_sessions(retention_days: int = 7):
     return {"status": "ok", "removed": removed}
 
 
+@app.task(queue="default")
+def task_cleanup_operational_history():
+    from database.db import Database
+
+    db = Database()
+    removed = db.cleanup_operational_history(
+        audit_retention_days=int(os.getenv("AUDIT_RETENTION_DAYS", "365")),
+        collection_retention_days=int(os.getenv("COLLECTION_RETENTION_DAYS", "180")),
+        metrics_retention_days=int(os.getenv("COLLECTION_METRICS_RETENTION_DAYS", "180")),
+    )
+    logger.info("task_cleanup_operational_history: %s", removed)
+    return {"status": "ok", "removed": removed}
+
 @app.task(bind=True, max_retries=2, default_retry_delay=600, queue="geo")
 def task_geo(self):
     db = None
@@ -132,9 +150,9 @@ def task_geo(self):
         execucao_id = db.iniciar_execucao_coleta("geo", "task_geo")
         raw = MultiSourceCollector().run()
 
-        # Fix: limpa municipios_mt ANTES de passá-los como referência no ETL.
-        # Anteriormente, o GDF cru (com possíveis geometrias inválidas e CRS errado)
-        # era usado como referência para enriquecer os demais layers — causando
+        # Fix: limpa municipios_mt ANTES de passÃ¡-los como referÃªncia no ETL.
+        # Anteriormente, o GDF cru (com possÃ­veis geometrias invÃ¡lidas e CRS errado)
+        # era usado como referÃªncia para enriquecer os demais layers â€” causando
         # falhas silenciosas no sjoin do enrich_municipio.
         municipios_clean = None
         mun_raw = raw.get("municipios_mt")
@@ -151,7 +169,7 @@ def task_geo(self):
                 if not ativas.empty:
                     db.save_desapropriacao_ativa(ativas)
 
-        logger.info("task_geo concluída")
+        logger.info("task_geo concluÃ­da")
         db.finalizar_execucao_coleta(
             execucao_id,
             status="success",
@@ -165,7 +183,7 @@ def task_geo(self):
         raise self.retry(exc=e)
 
 
-# ── Tarefa: coleta judicial ────────────────────────────────────────────
+# â”€â”€ Tarefa: coleta judicial â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.task(bind=True, max_retries=2, default_retry_delay=300, queue="judicial")
 def task_judicial(self, dias_atras: int = 1):
     db = None
@@ -275,7 +293,7 @@ def task_judicial(self, dias_atras: int = 1):
         raise self.retry(exc=e)
 
 
-# ── Tarefa: eventos administrativos ───────────────────────────────────
+# â”€â”€ Tarefa: eventos administrativos â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.task(bind=True, max_retries=2, default_retry_delay=300, queue="admin")
 def task_admin(self, dias_atras: int = 2):
     db = None
@@ -311,7 +329,7 @@ def task_admin(self, dias_atras: int = 2):
         raise self.retry(exc=e)
 
 
-# ── Tarefa: recalcula scores ───────────────────────────────────────────
+# â”€â”€ Tarefa: recalcula scores â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.task(bind=True, max_retries=1, queue="default")
 def task_score(self):
     db = None
@@ -355,7 +373,7 @@ def task_score(self):
         raise self.retry(exc=e)
 
 
-# ── Tarefa: envio de alertas ───────────────────────────────────────────
+# â”€â”€ Tarefa: envio de alertas â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 @app.task(queue="default")
 def task_alerta(origem: str, items: list):
     telegram_token  = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -370,12 +388,12 @@ def task_alerta(origem: str, items: list):
         mun   = item.get("municipio") or item.get("comarca", "?")
         score = item.get("score_total") or item.get("score_evento", "?")
         tipo  = item.get("tipo_pericia_sugerida") or item.get("categoria_agronomica", "")
-        linhas.append(f"• {mun} | Score {score} | {tipo}")
+        linhas.append(f"â€¢ {mun} | Score {score} | {tipo}")
 
-    emoji = "⚖️" if origem == "judicial" else "📋"
+    emoji = "âš–ï¸" if origem == "judicial" else "ðŸ“‹"
     msg = (
-        f"🔥 *Radar Pericial — {origem.upper()} — MT*\n\n"
-        f"{emoji} {len(items)} evento(s) com alta probabilidade de perícia:\n"
+        f"ðŸ”¥ *Radar Pericial â€” {origem.upper()} â€” MT*\n\n"
+        f"{emoji} {len(items)} evento(s) com alta probabilidade de perÃ­cia:\n"
         + "\n".join(linhas)
     )
 
@@ -398,3 +416,6 @@ def task_alerta(origem: str, items: list):
             logger.info("Alerta webhook enviado")
         except Exception as e:
             logger.error(f"Webhook: {e}")
+
+
+

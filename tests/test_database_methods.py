@@ -301,3 +301,39 @@ def test_cleanup_expired_sessions_clamps_retention_days():
     db.cleanup_expired_sessions(retention_days=999)
 
     assert conn.executed[0][1] == {"retention_days": 365}
+
+
+def test_cleanup_operational_history_deletes_old_records():
+    conn = FakeConnection()
+    db = make_db(conn)
+
+    removed = db.cleanup_operational_history(
+        audit_retention_days=365,
+        collection_retention_days=180,
+        metrics_retention_days=90,
+    )
+
+    assert "DELETE FROM auditoria_eventos" in conn.executed[0][0]
+    assert "DELETE FROM metricas_coleta_classe" in conn.executed[1][0]
+    assert "DELETE FROM execucoes_coleta" in conn.executed[2][0]
+    assert removed == {
+        "auditoria_eventos": 1,
+        "metricas_coleta_classe": 1,
+        "execucoes_coleta": 1,
+    }
+    assert conn.commits == 1
+
+
+def test_init_schema_does_not_reset_admin_password_by_default(monkeypatch):
+    from database.db import Database
+
+    conn = FakeConnection()
+    db = make_db(conn)
+    monkeypatch.setenv("DEFAULT_ADMIN_PASSWORD", "Admin12345!")
+    monkeypatch.delenv("RESET_DEFAULT_ADMIN_PASSWORD", raising=False)
+
+    db._init_schema()
+
+    admin_sql = conn.executed[2][0]
+    assert "ON CONFLICT (username) DO NOTHING" in admin_sql
+    assert "DO UPDATE" not in admin_sql

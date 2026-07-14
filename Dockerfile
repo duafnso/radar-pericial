@@ -34,11 +34,12 @@ COPY --chown=appuser:appuser collector ./collector
 COPY --chown=appuser:appuser database ./database
 COPY --chown=appuser:appuser etl ./etl
 COPY --chown=appuser:appuser intelligence ./intelligence
+COPY --chown=appuser:appuser tools ./tools
 COPY --chown=appuser:appuser run_collect.py working_data_collector.py ./
 COPY --chown=appuser:appuser --from=frontend-build /app/interface/templates ./interface/templates
 COPY --chown=appuser:appuser --from=frontend-build /app/interface/static ./interface/static
 
-RUN for d in collector database alerts interface etl intelligence api; do \
+RUN for d in collector database alerts interface etl intelligence api tools; do \
     mkdir -p "$d" && touch "$d/__init__.py"; \
     done
 

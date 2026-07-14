@@ -7,8 +7,8 @@ Estado revisado em 2026-07-13.
 - Build Docker reprodutivel com frontend React/Vite gerado automaticamente.
 - `docker compose up -d --build` validado com web, worker, beat, PostgreSQL/PostGIS e Redis.
 - Health checks validados:
-  - `/health`
-  - `/health/ready`
+  - `/health`;
+  - `/health/ready`.
 - Smoke test autenticado validado:
   - login admin;
   - `/api/me`;
@@ -17,13 +17,20 @@ Estado revisado em 2026-07-13.
   - `/api/coletas/status`;
   - `/api/coletas/resumo`;
   - HTML e assets do frontend.
-- Suite automatizada validada no container: 53 testes passando.
-- Producao agora falha no startup se faltarem segredos fortes:
+- Suite automatizada validada no container.
+- Producao falha no startup se faltarem segredos fortes:
   - `SECRET_KEY`;
   - `SESSION_TOKEN_PEPPER`;
   - `DATAJUD_API_KEY`.
-- CORS continua bloqueando `*` em producao.
-- Coletas manuais agora bloqueiam execucao duplicada do mesmo tipo quando ja existe coleta em andamento.
+- CORS bloqueia `*` em producao.
+- Bootstrap admin ficou mais seguro:
+  - `DEFAULT_ADMIN_PASSWORD` cria o admin apenas se ele nao existir;
+  - reset automatico de senha exige `RESET_DEFAULT_ADMIN_PASSWORD=true`;
+  - reset via startup e ignorado em producao.
+- Rate limit de login e acoes sensiveis implementado com backend configuravel:
+  - memoria em desenvolvimento/testes;
+  - Redis por padrao em producao.
+- Coletas manuais agora possuem limite de abuso e bloqueio de execucao duplicada do mesmo tipo quando ja existe coleta em andamento.
 - Coleta DataJud ganhou suporte a janela incremental quando `DATAJUD_START_DATE` nao estiver fixado.
 - Coleta DataJud registra metricas por classe em `metricas_coleta_classe`:
   - registros coletados;
@@ -31,8 +38,13 @@ Estado revisado em 2026-07-13.
   - descartados sem CNJ;
   - duplicados;
   - erro resumido.
-- Radar de Processos ganhou filtros de data de distribuicao.
-- Radar de Processos ganhou paginacao e exportacao CSV da pagina atual.
+- Politica tecnica de retencao operacional implementada por task agendada:
+  - `auditoria_eventos`;
+  - `execucoes_coleta`;
+  - `metricas_coleta_classe`.
+- Radar de Processos ganhou filtros de data de distribuicao, paginacao e CSV:
+  - pagina atual;
+  - todos os resultados filtrados.
 - Usuarios ganhou filtros por perfil, status e busca.
 - Usuarios ganhou exportacao CSV da lista filtrada.
 - Auditoria ganhou filtros por acao, ator, entidade e intervalo de datas.
@@ -40,6 +52,16 @@ Estado revisado em 2026-07-13.
 - Coletas ganhou exportacao CSV de historico e metricas.
 - Coletas ganhou diagnostico por classe/fonte com coletados, salvos, sem CNJ e duplicados.
 - Central de Alertas permite marcar alerta de processo acompanhado como lido.
+- CI criado em `.github/workflows/ci.yml` com:
+  - `py_compile`;
+  - `pytest`;
+  - teste de integracao PostgreSQL/PostGIS;
+  - build frontend;
+  - build Docker;
+  - smoke test opcional de homologacao.
+- Base de migracoes SQL versionadas criada em `database/migrations`.
+- Script `tools/apply_migrations.py` criado com controle em `schema_migrations`.
+- Documentacao de GitHub, CI/CD, migracoes e testes criada/atualizada.
 
 ## Ainda pendente antes de venda comercial
 
@@ -51,29 +73,23 @@ Estado revisado em 2026-07-13.
 - Configurar PostgreSQL gerenciado com PostGIS.
 - Configurar Redis gerenciado.
 - Definir backup diario do banco.
-- Definir retencao de logs.
+- Definir retencao de logs da infraestrutura.
 - Subir ambiente de homologacao separado do ambiente local.
 - Rodar smoke test no dominio final.
 
 ### 2. Seguranca operacional
 
-- Remover `DEFAULT_ADMIN_PASSWORD` depois do bootstrap inicial.
-- Definir rotacao periodica para `SECRET_KEY` e `SESSION_TOKEN_PEPPER`.
+- Remover `DEFAULT_ADMIN_PASSWORD` do ambiente depois do bootstrap inicial.
+- Executar e documentar o primeiro ciclo real de rotacao de `SECRET_KEY` e `SESSION_TOKEN_PEPPER` em homologacao.
 - Revisar tempo de expiracao de sessoes para o modelo comercial.
-- Adicionar rate limit persistente, preferencialmente via Redis, para login e acoes sensiveis.
-- Criar politica de retencao para:
-  - `auditoria_eventos`;
-  - `execucoes_coleta`;
-  - `metricas_coleta_classe`;
-  - sessoes expiradas.
+- Validar rate limit com Redis no ambiente real de homologacao.
+- Definir rotina operacional para backup/restore antes de migracoes.
 
 ### 3. Banco e migracoes
 
-- Adotar Alembic ou migracoes SQL versionadas.
-- Separar schema inicial de alteracoes incrementais.
-- Criar rotina de backup antes de aplicar migracoes.
+- Continuar migrando alteracoes incrementais de `database/db.py` para arquivos em `database/migrations`.
 - Testar restore em ambiente local/homologacao.
-- Criar testes de integracao com PostGIS em CI.
+- Avaliar Alembic somente se o volume de migracoes, ambientes ou branches tornar o SQL versionado simples custoso.
 
 ### 4. DataJud e qualidade de dados
 
@@ -85,7 +101,7 @@ Estado revisado em 2026-07-13.
   - `DATAJUD_MAX_RESULTS_PER_CLASS`;
   - `DATAJUD_REQUEST_DELAY_SECONDS`;
   - `DATAJUD_INCREMENTAL_OVERLAP_DAYS`.
-- Monitorar 429 e reduzir agressividade se a API limitar chamadas.
+- Monitorar `429 Too Many Requests` e reduzir agressividade se a API limitar chamadas.
 - Criar rotina de auditoria de qualidade dos processos:
   - CNJ ausente;
   - municipio ausente;
@@ -95,8 +111,8 @@ Estado revisado em 2026-07-13.
 ### 5. Produto e frontend
 
 - Validar visualmente as telas em desktop, notebook e mobile.
-- Melhorar estados vazios com acoes diretas por perfil.
-- Avaliar se a exportacao CSV do Radar de Processos deve baixar todos os resultados filtrados ou apenas a pagina atual.
+- Refinar microcopy e estados guiados apos teste com usuario real.
+- Revisar se exportacoes grandes precisam de processamento assincrono no futuro.
 
 ### 6. Compliance comercial
 
@@ -112,12 +128,11 @@ Estado revisado em 2026-07-13.
 - Criar politica de privacidade.
 - Definir contrato e aviso de responsabilidade sobre decisao pericial.
 
-### 7. CI/CD
+### 7. GitHub e CI/CD
 
-- Criar pipeline automatizado com:
-  - `python -m py_compile`;
-  - `pytest`;
-  - `npm run frontend:build`;
-  - build Docker;
-  - smoke test em homologacao.
+- Subir o repositorio para GitHub, se ainda nao estiver remoto.
+- Configurar branch protection para exigir CI verde antes de merge.
+- Configurar secrets `RADAR_SMOKE_USER` e `RADAR_SMOKE_PASSWORD`.
+- Rodar workflow de CI em pull request.
+- Rodar smoke test manual contra homologacao antes do primeiro deploy comercial.
 - Bloquear deploy se qualquer etapa falhar.

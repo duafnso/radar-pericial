@@ -1,4 +1,4 @@
-import React from "react";
+﻿import React from "react";
 import { Bell, CheckCircle2, FileText, RefreshCw } from "lucide-react";
 import { CardLine } from "../components/CardLine";
 import { Empty, ErrorState, LoadingState } from "../components/Empty";
@@ -16,7 +16,7 @@ export function Administrativo({ api }: { api: ApiClient }) {
     setLoading(true);
     setError("");
     const data = await api.get<any>(`/api/eventos?limit=80&dias=${days}`);
-    if (!data) setError("Não foi possível carregar eventos administrativos.");
+    if (!data) setError("NÃ£o foi possÃ­vel carregar eventos administrativos.");
     setItems(data?.items || []);
     setLoading(false);
   }
@@ -26,15 +26,15 @@ export function Administrativo({ api }: { api: ApiClient }) {
   return (
     <Page
       title="Radar Administrativo"
-      subtitle={`${fmt(items.length)} eventos administrativos no período selecionado`}
+      subtitle={`${fmt(items.length)} eventos administrativos no perÃ­odo selecionado`}
       action={<button onClick={load}><RefreshCw size={14} /> Atualizar</button>}
     >
       <div className="filters">
         <select value={days} onChange={(event) => setDays(event.target.value)}>
-          <option value="30">Últimos 30 dias</option>
-          <option value="90">Últimos 90 dias</option>
-          <option value="365">Últimos 12 meses</option>
-          <option value="1825">Últimos 5 anos</option>
+          <option value="30">Ãšltimos 30 dias</option>
+          <option value="90">Ãšltimos 90 dias</option>
+          <option value="365">Ãšltimos 12 meses</option>
+          <option value="1825">Ãšltimos 5 anos</option>
         </select>
       </div>
       {error && <ErrorState text={error} retry={load} />}
@@ -44,10 +44,10 @@ export function Administrativo({ api }: { api: ApiClient }) {
             <CardLine
               key={item.id || index}
               title={item.titulo || item.descricao || item.fonte || "Evento administrativo"}
-              meta={`${item.fonte || "Fonte não informada"} · ${item.municipio || "Município pendente"} · ${shortDate(item.coletado_em || item.data_publicacao)}`}
+              meta={`${item.fonte || "Fonte nÃ£o informada"} Â· ${item.municipio || "MunicÃ­pio pendente"} Â· ${shortDate(item.coletado_em || item.data_publicacao)}`}
             />
           )) : (
-            <Empty text="Nenhum evento administrativo encontrado nesse período. Execute a coleta administrativa em Operação de Coletas para buscar novos dados." />
+            <Empty text="Nenhum evento administrativo encontrado nesse perÃ­odo. Execute a coleta administrativa em OperaÃ§Ã£o de Coletas para buscar novos dados." />
           )}
         </div>
       )}
@@ -64,7 +64,7 @@ export function Alertas({ api }: { api: ApiClient }) {
     setLoading(true);
     setError("");
     const data = await api.get<any>("/api/alertas?limit=80");
-    if (!data) setError("Não foi possível carregar alertas.");
+    if (!data) setError("NÃ£o foi possÃ­vel carregar alertas.");
     setItems(data?.items || []);
     setLoading(false);
   }
@@ -94,7 +94,7 @@ export function Alertas({ api }: { api: ApiClient }) {
                 <div className={item.lido ? "alert-row read" : "alert-row"} key={item.id}>
                   <CardLine
                     title={item.titulo || "Alerta de processo"}
-                    meta={`${item.numero_cnj || "CNJ pendente"} · ${item.municipio || item.comarca || "Local pendente"} · ${shortDate(item.criado_em)}`}
+                    meta={`${item.numero_cnj || "CNJ pendente"} Â· ${item.municipio || item.comarca || "Local pendente"} Â· ${shortDate(item.criado_em)}`}
                   />
                   {!item.lido && (
                     <button className="secondary" onClick={() => markRead(item)}>
@@ -102,7 +102,7 @@ export function Alertas({ api }: { api: ApiClient }) {
                     </button>
                   )}
                 </div>
-              )) : <Empty text="Nenhum processo acompanhado gerou alerta ainda." />}
+              )) : <Empty text="Nenhum processo acompanhado gerou alerta ainda. Acompanhe processos no Radar de Processos para receber mudanças aqui." />}
             </div>
           </section>
           <section className="card">
@@ -112,9 +112,9 @@ export function Alertas({ api }: { api: ApiClient }) {
                 <CardLine
                   key={item.id || index}
                   title={item.titulo || item.orgao || "Alerta"}
-                  meta={`${item.fonte || ""} · Score ${item.score_evento || item.score_total || 0} · ${item.municipio || ""}`}
+                  meta={`${item.fonte || ""} Â· Score ${item.score_evento || item.score_total || 0} Â· ${item.municipio || ""}`}
                 />
-              )) : <Empty text="Nenhuma oportunidade administrativa quente encontrada." />}
+              )) : <Empty text="Nenhuma oportunidade administrativa quente encontrada. Execute a coleta administrativa para buscar novos eventos." />}
             </div>
           </section>
         </div>
@@ -122,3 +122,5 @@ export function Alertas({ api }: { api: ApiClient }) {
     </Page>
   );
 }
+
+

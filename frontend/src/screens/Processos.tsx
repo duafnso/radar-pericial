@@ -1,4 +1,4 @@
-﻿import React from "react";
+import React from "react";
 import { BellPlus, Download, RefreshCw, X } from "lucide-react";
 import { Empty, ErrorState, LoadingState } from "../components/Empty";
 import { Page } from "../components/Page";
@@ -73,11 +73,11 @@ export function Processos({
     }
     const result = await api.post<any>(`/api/processos/${processo.id}/acompanhar`);
     if (result?.status === "ok") {
-      notify("Processo adicionado Ã  Central de Alertas.");
+      notify("Processo adicionado à Central de Alertas.");
       navigate("alertas");
       return;
     }
-    notify("NÃ£o foi possÃ­vel acompanhar este processo.");
+    notify("Não foi possível acompanhar este processo.");
   }
 
   React.useEffect(() => { setPage(0); }, [region, filters]);
@@ -118,7 +118,7 @@ export function Processos({
   return (
     <Page
       title="Radar de Processos Judiciais"
-      subtitle={`${fmt(total)} processos Â· pÃ¡gina ${page + 1} Â· dados da Ãºltima coleta judicial`}
+      subtitle={`${fmt(total)} processos · página ${page + 1} · dados da última coleta judicial`}
       action={
         <div className="button-row">
           <button onClick={exportCurrentPage} disabled={!items.length}><Download size={14} /> CSV página</button>
@@ -168,7 +168,7 @@ function Pagination({ page, pageSize, total, setPage }: {
       <span>{fmt(page * pageSize + 1)}-{fmt(Math.min((page + 1) * pageSize, total))} de {fmt(total)}</span>
       <div className="button-row">
         <button className="secondary" disabled={page <= 0} onClick={() => setPage(page - 1)}>Anterior</button>
-        <button className="secondary" disabled={page >= maxPage} onClick={() => setPage(page + 1)}>PrÃ³xima</button>
+        <button className="secondary" disabled={page >= maxPage} onClick={() => setPage(page + 1)}>Próxima</button>
       </div>
     </div>
   );
@@ -183,27 +183,27 @@ function FilterBar({ filters, setFilters }: {
       <select value={filters.faixa} onChange={(event) => setFilters({ ...filters, faixa: event.target.value })}>
         <option value="">Todas as faixas</option>
         <option value="janela_quente">Janela quente</option>
-        <option value="provavel">ProvÃ¡vel perÃ­cia</option>
-        <option value="observacao">ObservaÃ§Ã£o</option>
+        <option value="provavel">Provável perícia</option>
+        <option value="observacao">Observação</option>
         <option value="frio">Frio</option>
       </select>
       <select value={filters.regiao} onChange={(event) => setFilters({ ...filters, regiao: event.target.value })}>
-        <option value="">Todas as regiÃµes</option>
-        <option>MÃ©dio-Norte</option>
+        <option value="">Todas as regiões</option>
+        <option>Médio-Norte</option>
         <option>Norte</option>
         <option>Centro-Sul</option>
         <option>Oeste</option>
         <option>Leste</option>
         <option>Sudoeste</option>
       </select>
-      <input placeholder="MunicÃ­pio" value={filters.municipio} onChange={(event) => setFilters({ ...filters, municipio: event.target.value })} />
+      <input placeholder="Município" value={filters.municipio} onChange={(event) => setFilters({ ...filters, municipio: event.target.value })} />
       <input placeholder="Classe processual" value={filters.classe} onChange={(event) => setFilters({ ...filters, classe: event.target.value })} />
       <label className="field-compact">
         <span>De</span>
         <input type="date" value={filters.dataInicio} onChange={(event) => setFilters({ ...filters, dataInicio: event.target.value })} />
       </label>
       <label className="field-compact">
-        <span>AtÃ©</span>
+        <span>Até</span>
         <input type="date" value={filters.dataFim} onChange={(event) => setFilters({ ...filters, dataFim: event.target.value })} />
       </label>
     </div>
@@ -216,18 +216,18 @@ function ProcessModal({ processo, close, follow }: {
   follow: (processo: Processo) => void;
 }) {
   const rows = [
-    ["NÃºmero CNJ", processo.numero_cnj],
+    ["Número CNJ", processo.numero_cnj],
     ["Tribunal", processo.tribunal],
     ["Comarca", processo.comarca],
     ["Vara", processo.vara],
-    ["MunicÃ­pio", processo.municipio],
-    ["RegiÃ£o IMEA", processo.regiao_imea],
+    ["Município", processo.municipio],
+    ["Região IMEA", processo.regiao_imea],
     ["Classe", processo.classe_processual],
     ["Assunto", processo.assunto_principal],
     ["Fase atual", processo.fase_atual],
-    ["DistribuiÃ§Ã£o", shortDate(processo.data_distribuicao)],
-    ["Tipo de perÃ­cia sugerida", processo.tipo_pericia_sugerida],
-    ["UrgÃªncia", processo.urgencia],
+    ["Distribuição", shortDate(processo.data_distribuicao)],
+    ["Tipo de perícia sugerida", processo.tipo_pericia_sugerida],
+    ["Urgência", processo.urgencia],
     ["Faixa", scoreLabel(processo.faixa_probabilidade)]
   ];
 
@@ -237,7 +237,7 @@ function ProcessModal({ processo, close, follow }: {
         <header className="modal-header">
           <div>
             <strong>{processo.numero_cnj || "Processo sem CNJ"}</strong>
-            <span>{processo.classe_processual || "Classe nÃ£o informada"}</span>
+            <span>{processo.classe_processual || "Classe não informada"}</span>
           </div>
           <button className="secondary icon-button" onClick={close} aria-label="Fechar"><X size={16} /></button>
         </header>

@@ -1,7 +1,7 @@
-﻿"""
-database/db.py â€” PostGIS completo para o Radar Pericial
 """
-# â”€â”€ IMPORTS OBRIGATÃ“RIOS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+database/db.py — PostGIS completo para o Radar Pericial
+"""
+# ── IMPORTS OBRIGATÓRIOS ─────────────────────────────────────────────
 import logging
 import os
 import hashlib
@@ -22,21 +22,21 @@ logger = logging.getLogger(__name__)
 def json_dumps(value: dict) -> str:
     return json.dumps(value, ensure_ascii=False, default=str)
 
-# â”€â”€ DEBUG: confirmar carregamento â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── DEBUG: confirmar carregamento ────────────────────────────────────
 logger.info("database/db.py carregado.")
 
-# â”€â”€ Defaults para variÃ¡veis de conexÃ£o (evita NameError) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Defaults para variáveis de conexão (evita NameError) ─────────────
 host = os.getenv("PGHOST", "localhost")
 port = os.getenv("PGPORT", "5432")
 user = os.getenv("PGUSER", "postgres")
 password = os.getenv("PGPASSWORD", "")
 database = os.getenv("PGDATABASE", "radar_pericial")
 
-# â”€â”€ CONEXÃƒO COM BANCO (Railway-compatible) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── CONEXÃO COM BANCO (Railway-compatible) ───────────────────────────
 _raw_db_url = os.getenv("DATABASE_URL")
 
 if not _raw_db_url:
-    # Monta URL com variÃ¡veis PG* do Railway
+    # Monta URL com variáveis PG* do Railway
     password_encoded = quote_plus(password)
     _raw_db_url = f"postgresql://{user}:{password_encoded}@{host}:{port}/{database}"
     logger.info("DATABASE_URL montada: %s:%s/%s", host, port, database)
@@ -49,7 +49,7 @@ if _raw_db_url.startswith("postgresql://"):
 else:
     DATABASE_URL = _raw_db_url
 
-# â”€â”€ Singleton do engine â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── Singleton do engine ──────────────────────────────────────────────
 _engine = None
 
 def get_engine():
@@ -64,7 +64,7 @@ def get_engine():
         )
     return _engine
 
-# â”€â”€ CryptContext com fallback seguro â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+# ── CryptContext com fallback seguro ─────────────────────────────────
 def _get_pwd_context():
     """Retorna CryptContext usando esquemas seguros."""
     try:
@@ -72,7 +72,7 @@ def _get_pwd_context():
         return CryptContext(schemes=["argon2", "bcrypt"], deprecated="auto")
     except ImportError as e:
         raise RuntimeError(
-            "passlib Ã© obrigatÃ³rio para autenticaÃ§Ã£o segura (bcrypt/argon2)."
+            "passlib é obrigatório para autenticação segura (bcrypt/argon2)."
         ) from e
 
 _pwd_context_ref = _get_pwd_context()
@@ -91,7 +91,7 @@ def _load_session_token_pepper() -> str:
         return pepper
     if _is_production():
         raise RuntimeError(
-            "SESSION_TOKEN_PEPPER ou SECRET_KEY deve ser definido em produÃ§Ã£o."
+            "SESSION_TOKEN_PEPPER ou SECRET_KEY deve ser definido em produção."
         )
     logger.warning(
         "SESSION_TOKEN_PEPPER/SECRET_KEY ausente; usando pepper de desenvolvimento."
@@ -134,7 +134,7 @@ class Database:
             self.engine = get_engine()
 
     def _init_schema(self):
-        """Cria extensÃµes e tabelas."""
+        """Cria extensões e tabelas."""
         sql = """
         CREATE EXTENSION IF NOT EXISTS postgis;
         CREATE EXTENSION IF NOT EXISTS pg_trgm;
@@ -305,7 +305,7 @@ class Database:
             score_movimentacao INT DEFAULT 0, score_publicacao INT DEFAULT 0,
             score_administrativo INT DEFAULT 0,
             faixa_probabilidade TEXT DEFAULT 'frio',
-            faixa_label TEXT DEFAULT 'â„ï¸ Frio',
+            faixa_label TEXT DEFAULT '❄️ Frio',
             tipo_pericia_sugerida TEXT, categorias_detectadas TEXT,
             urgencia TEXT DEFAULT 'baixa',
             calculado_em TIMESTAMPTZ DEFAULT NOW()
@@ -476,7 +476,7 @@ class Database:
             try:
                 return bool(pwd_ctx.verify(password_raw, stored))
             except (ValueError, TypeError):
-                logger.warning("Hash de senha invÃ¡lido para usuÃ¡rio '%s'.", username)
+                logger.warning("Hash de senha inválido para usuário '%s'.", username)
                 return False
 
     def create_token(
@@ -495,7 +495,7 @@ class Database:
                 {"u": username},
             ).fetchone()
             if not user:
-                raise ValueError("UsuÃ¡rio inexistente para criaÃ§Ã£o de sessÃ£o.")
+                raise ValueError("Usuário inexistente para criação de sessão.")
             conn.execute(
                 text("""
                     INSERT INTO user_sessions
@@ -627,13 +627,13 @@ class Database:
         }
     def save_geodataframe(self, gdf, table: str, if_exists: str = "append"):
         if gdf is None or (hasattr(gdf, "empty") and gdf.empty):
-            logger.warning(f"GDF vazio â†’ '{table}' ignorado")
+            logger.warning(f"GDF vazio → '{table}' ignorado")
             return
         if not isinstance(gdf, gpd.GeoDataFrame):
             try:
                 pd.DataFrame(gdf).to_sql(table, self.engine, if_exists=if_exists, index=False)
             except Exception as e:
-                logger.error(f"Erro tabela nÃ£o-geo '{table}': {e}")
+                logger.error(f"Erro tabela não-geo '{table}': {e}")
             return
         if gdf.crs is None:
             gdf = gdf.set_crs(epsg=4326)
@@ -854,7 +854,7 @@ class Database:
                 {"pid": processo_id, "desc": dados.get("descricao"), "dt": dados.get("data_movimentacao")},
             ).fetchone()
             if existing:
-                logger.debug(f"MovimentaÃ§Ã£o duplicada ignorada: processo {processo_id}")
+                logger.debug(f"Movimentação duplicada ignorada: processo {processo_id}")
                 return False
             conn.execute(
                 text("""
@@ -1505,13 +1505,13 @@ class Database:
                        WHEN COALESCE(r.erro, '') ILIKE '%429%' OR COALESCE(r.erro, '') ILIKE '%too many requests%'
                            THEN 'Limite de taxa da fonte externa. Aguarde antes de tentar novamente.'
                        WHEN COALESCE(r.erro, '') ILIKE '%401%' OR COALESCE(r.erro, '') ILIKE '%apikey%' OR COALESCE(r.erro, '') ILIKE '%unauthorized%'
-                           THEN 'Chave de API ausente ou invÃ¡lida.'
+                           THEN 'Chave de API ausente ou inválida.'
                        WHEN COALESCE(r.erro, '') ILIKE '%timeout%' OR COALESCE(r.erro, '') ILIKE '%timed out%'
                            THEN 'A fonte externa demorou para responder.'
                        WHEN r.status = 'running'
                            THEN 'Coleta em andamento.'
                        WHEN r.status = 'success' AND COALESCE(r.registros_salvos, 0) = 0
-                           THEN 'Coleta concluÃ­da sem novos registros.'
+                           THEN 'Coleta concluída sem novos registros.'
                        ELSE ''
                    END AS mensagem_operacional
             FROM agg a

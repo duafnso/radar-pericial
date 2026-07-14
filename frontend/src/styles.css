@@ -27,7 +27,8 @@ textarea { min-height: 130px; resize: vertical; }
 
 .login-screen { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
 .login-panel { width: min(410px, 100%); background: var(--white); border: 1px solid var(--line); border-radius: 8px; padding: 34px; box-shadow: 0 20px 60px rgba(0,0,0,.08); display: grid; gap: 12px; }
-.login-brand { font-size: 30px; font-weight: 750; letter-spacing: -.02em; }
+.login-brand { background: #101813; border-radius: 8px; padding: 14px 16px; display: flex; align-items: center; min-height: 68px; }
+.login-brand img { width: 100%; max-width: 300px; height: auto; display: block; }
 .login-subtitle { color: var(--muted); margin-bottom: 14px; }
 .login-panel label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
 

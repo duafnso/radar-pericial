@@ -1,4 +1,5 @@
 import { Activity, Bell, Calculator, Database, FileText, Gavel, LogOut, Map, Shield, UserRoundCog } from "lucide-react";
+import logoUrl from "../assets/radar-pericial-logo.svg";
 import type { ApiUser, NavItem, Screen } from "../types";
 
 const NAV: Array<{ section: string; items: NavItem[] }> = [
@@ -39,8 +40,8 @@ export function Sidebar({ screen, navigate, user, region, setRegion, hasPermissi
 }) {
   return (
     <aside className="sidebar-global">
-      <div className="brand">
-        <strong>Radar Pericial</strong>
+      <div className="brand brand-logo">
+        <img src={logoUrl} alt="Radar Pericial" />
         <span>Inteligência Fundiária</span>
       </div>
       <nav>

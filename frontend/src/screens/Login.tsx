@@ -1,4 +1,5 @@
 import React from "react";
+import logoUrl from "../assets/radar-pericial-logo.svg";
 import type { ApiClient, ApiUser } from "../types";
 
 export function Login({ api, setToken, setUser, notify }: {
@@ -27,7 +28,7 @@ export function Login({ api, setToken, setUser, notify }: {
   return (
     <div className="login-screen">
       <form className="login-panel" onSubmit={submit}>
-        <div className="login-brand">Radar Pericial</div>
+        <div className="login-brand"><img src={logoUrl} alt="Radar Pericial" /></div>
         <div className="login-subtitle">Inteligência judicial e territorial para perícia agronômica</div>
         <label>Usuário</label>
         <input value={username} onChange={(event) => setUsername(event.target.value)} autoComplete="username" required />

@@ -1,6 +1,8 @@
 # Plano de Evolucao do Radar Pericial por Fases
 
 Estado: planejamento atualizado para desenvolvimento local.
+
+Documento complementar: `docs/PLANO_MESTRE_MELHORIAS.md` consolida todas as melhorias propostas, incluindo trilhas tecnicas permanentes, dados, seguranca, testes, frontend e lancamento.
 Premissa principal: o produto continua rodando localmente para testes. A etapa de lancamento, hospedagem publica, venda comercial e operacao em producao so deve comecar depois que as fases essenciais estiverem funcionais, testadas e aprovadas.
 
 ## Visao de Produto

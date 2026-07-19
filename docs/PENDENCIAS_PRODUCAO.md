@@ -63,6 +63,10 @@ Estado revisado em 2026-07-13.
 - Script `tools/apply_migrations.py` criado com controle em `schema_migrations`.
 - Documentacao de GitHub, CI/CD, migracoes e testes criada/atualizada.
 
+## Plano de evolucao local antes do lancamento
+
+Antes de iniciar hospedagem publica e venda comercial, seguir o roadmap em docs/PLANO_EVOLUCAO_PRODUTO.md. A prioridade e validar localmente as fases essenciais: consolidacao do MVP, inteligencia de presenca, perfil profissional, busca interna de peritos e CRM pericial simples.
+
 ## Ainda pendente antes de venda comercial
 
 ### 1. Homologacao de producao

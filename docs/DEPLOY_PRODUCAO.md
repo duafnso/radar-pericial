@@ -212,3 +212,51 @@ Use tambem `docs/CHECKLIST_HOMOLOGACAO_PRODUCAO.md` como checklist operacional c
 - Senha admin trocada depois do primeiro login.
 - Teste de coleta judicial executado com a chave DataJud real.
 - Logs de `web`, `worker` e `beat` verificados.
+
+## Mapa territorial
+
+Leaflet e seu CSS sao compilados no bundle Vite local; o mapa nao depende de CDN em tempo de execucao.
+
+### Endpoint agregado
+
+`GET /api/processos/mapa/resumo` exige autenticacao e aceita os filtros do mapa, inclusive `limit_cidades`.
+O endpoint agrega por municipio antes de limitar a lista de cidades.
+A resposta inclui `total_processos`, `total_municipios`, `sem_localizacao` e `items`.
+`limit_cidades` limita municipios retornados, nunca processos antes da agregacao.
+
+Em uma validacao local de 2026-07-20, endpoint e PostGIS retornaram 702 processos localizados, 73 municipios e 27 processos sem localizacao.
+
+### Tiles e atribuicao
+
+Configure o provedor por variaveis de build:
+
+```env
+VITE_MAP_TILE_URL=https://tiles.seu-provedor.example/{z}/{x}/{y}.png
+VITE_MAP_TILE_ATTRIBUTION=Texto ou HTML de atribuicao exigido pelo provedor
+```
+
+Em producao, configure as duas variaveis com um provedor comercial aprovado.
+A atribuicao deve permanecer visivel no controle do mapa e e obrigatoria.
+OpenStreetMap e apenas o fallback de desenvolvimento local; nao o use como provedor comercial sem revisao de termos, capacidade e politica de uso.
+
+### Operacao do mapa
+
+1. Depois do deploy, execute o smoke autenticado; ele inclui `/api/processos/mapa/resumo?limit_cidades=200`.
+2. Compare os tres totais retornados pelo endpoint com uma consulta PostGIS atual, sem fixar os numeros historicos.
+3. Revise os logs de `web` sem incluir tokens, senhas ou variaveis de ambiente em tickets ou relatorios.
+4. Verifique que os assets compilados servem Leaflet pelo bundle local e nao por `unpkg`.
+
+### Checklist visual de homologacao
+
+Para concluir a homologacao, validar em navegador real:
+- 1440x900;
+- 1024x768;
+- 390x844.
+
+Em cada viewport, conferir:
+- basemap visivel e marcadores compactos;
+- contadores coerentes com o endpoint;
+- selecao municipal, detalhes e acompanhamento;
+- aviso de falha de tiles sem perda dos dados;
+- ausencia de poligonos ou limites territoriais;
+- ausencia de sobreposicao ou corte de textos e controles.

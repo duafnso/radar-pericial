@@ -640,6 +640,7 @@ function MunicipalPanel({
     );
   }
 
+  const displayedPage = Math.min(page, pageCount - 1);
   return (
     <aside className="map-side-panel" aria-label={`Processos de ${city.municipio}`}>
       <div className="map-panel-header">
@@ -690,7 +691,7 @@ function MunicipalPanel({
       )}
 
       <div className="map-panel-pagination">
-        <span>{fmt(processTotal)} processos · página {page + 1} de {pageCount}</span>
+        <span>{fmt(processTotal)} processos · página {displayedPage + 1} de {pageCount}</span>
         <div>
           <button className="secondary icon-button" disabled={page <= 0 || loading} onClick={() => setPage((current) => current - 1)} aria-label="Página anterior" title="Página anterior">
             <ChevronLeft size={15} />

@@ -109,6 +109,13 @@ def run(base_url: str, username: str, password: str) -> None:
     for name, path in checks:
         status, payload = _request(base_url, path, token=token)
         _check(name, status == 200, str(payload)[:200])
+    required_fields = {"total_processos", "total_municipios", "sem_localizacao", "items"}
+    status, payload = _request(base_url, "/api/processos/mapa/resumo?limit_cidades=200", token=token)
+    _check(
+        "mapa processos",
+        status == 200 and isinstance(payload, dict) and required_fields.issubset(payload),
+        str(payload)[:200],
+    )
 
 
 def main() -> int:

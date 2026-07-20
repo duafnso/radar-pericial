@@ -151,3 +151,27 @@ Antes de iniciar hospedagem publica e venda comercial, seguir o roadmap em docs/
 - Rodar workflow de CI em pull request.
 - Rodar smoke test manual contra homologacao antes do primeiro deploy comercial.
 - Bloquear deploy se qualquer etapa falhar.
+## Mapa territorial
+
+Validado localmente em 2026-07-20 com dados reais do PostGIS.
+
+### Concluido
+- Leaflet e CSS cartografico entram no bundle Vite local, sem CDN em tempo de execucao.
+- `GET /api/processos/mapa/resumo` agrega processos por municipio antes de aplicar `limit_cidades`.
+- Smoke autenticado valida o contrato agregado e suas quatro chaves obrigatorias.
+- Totais validados: 702 processos localizados, 73 municipios e 27 processos sem localizacao.
+- Docker, suite backend com PostGIS e bundle frontend foram validados localmente.
+
+### Pendente antes do uso comercial
+- Escolher um provedor comercial de tiles com SLA e termos compativeis.
+- Usar URL e atribuicao do provedor em `VITE_MAP_TILE_URL` e `VITE_MAP_TILE_ATTRIBUTION`.
+- Manter a atribuicao visivel no mapa; ela e obrigatoria para qualquer provedor.
+- Validar os termos e a disponibilidade do provedor escolhido em homologacao e producao.
+
+### Checklist visual pendente
+- Nenhum navegador real estava disponivel nesta validacao; nao declarar este checklist como concluido.
+- Conferir basemap, marcadores compactos e contadores em 1440x900, 1024x768 e 390x844.
+- Confirmar selecao municipal, detalhes e acompanhamento de processo.
+- Simular falha de tiles e confirmar que os dados municipais continuam visiveis.
+- Confirmar ausencia de poligonos ou limites territoriais.
+- Confirmar ausencia de sobreposicao ou corte de textos e controles.

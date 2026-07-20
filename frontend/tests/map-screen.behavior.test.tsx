@@ -274,6 +274,7 @@ describe("municipal process panel", () => {
     expect(screen.queryByText("STALE-PROCESS")).not.toBeInTheDocument();
     expect(screen.queryByText(/11 processos/)).not.toBeInTheDocument();
     expect(screen.getByText(/0 processos/)).toBeInTheDocument();
+    expect(screen.getByText(/p.gina 1 de 1/)).toBeInTheDocument();
   });
 
   it("selects, centers and requests the next ten-process page", async () => {
@@ -338,7 +339,58 @@ describe("summary request ordering", () => {
   });
 });
 
+describe("municipal process request ordering", () => {
+  it("discards an older municipal response resolved after the selected city", async () => {
+    let resolveCuiaba: (value: unknown) => void = () => undefined;
+    let resolveSinop: (value: unknown) => void = () => undefined;
+    const cuiaba = new Promise<unknown>((resolve) => {
+      resolveCuiaba = resolve;
+    });
+    const sinop = new Promise<unknown>((resolve) => {
+      resolveSinop = resolve;
+    });
+    const twoCities: MapSummaryResponse = {
+      ...summary,
+      total_processos: 3,
+      total_municipios: 2,
+      items: [
+        summary.items[0],
+        {
+          ...summary.items[0],
+          municipio: "Sinop",
+          regiao_imea: "Norte",
+          lat: -11.86,
+          lng: -55.51,
+          total_processos: 1,
+        },
+      ],
+    };
+    const api = createApi({ total: 0, offset: 0, limit: 10, items: [] });
+    api.get = vi.fn((path: string) => {
+      if (path.startsWith("/api/processos/mapa/resumo")) return Promise.resolve(twoCities);
+      if (path.includes("municipio=Sinop")) return sinop;
+      return cuiaba;
+    });
+    renderMap(api);
+
+    await userEvent.click(await screen.findByRole("button", { name: /Cuiab.*Centro-Sul.*2/i }));
+    await userEvent.click(await screen.findByRole("button", { name: /Sinop.*1/i }));
+
+    resolveSinop({ total: 1, offset: 0, limit: 10, items: [processItem(2, "SINOP-CURRENT")] });
+    expect(await screen.findByText("SINOP-CURRENT")).toBeInTheDocument();
+
+    resolveCuiaba({ total: 1, offset: 0, limit: 10, items: [processItem(1, "CUIABA-STALE")] });
+    await act(async () => {
+      await cuiaba;
+    });
+
+    expect(screen.getByText("SINOP-CURRENT")).toBeInTheDocument();
+    expect(screen.queryByText("CUIABA-STALE")).not.toBeInTheDocument();
+  });
+});
+
 describe("municipal marker accessibility", () => {
+
   it.each(["Enter", " "])("activates with %s and removes its keyboard handler during cleanup", async (key) => {
     const api = createApi({ total: 1, offset: 0, limit: 10, items: [processItem(1)] });
     const view = renderMap(api);

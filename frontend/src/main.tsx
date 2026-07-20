@@ -16,6 +16,13 @@ import { useLocalState } from "./hooks/useLocalState";
 import type { ApiUser, Screen } from "./types";
 import "./styles.css";
 
+type MapScreenProps = React.ComponentProps<typeof MapScreen> & {
+  navigate: (screen: Screen) => void;
+  notify: (message: string) => void;
+};
+
+const MapScreenWithFutureProps = MapScreen as React.ComponentType<MapScreenProps>;
+
 function App() {
   const [token, setToken] = useLocalState<string | null>("radar_token", null);
   const [user, setUser] = useLocalState<ApiUser | null>("radar_user", null);
@@ -72,7 +79,7 @@ function App() {
       />
       <main className="workspace">
         {screen === "dashboard" && <Dashboard api={api} region={region} navigate={navigate} hasPermission={hasPermission} />}
-        {screen === "mapa" && <MapScreen api={api} region={region} />}
+        {screen === "mapa" && <MapScreenWithFutureProps api={api} region={region} navigate={navigate} notify={notify} />}
         {screen === "processos" && <Processos api={api} region={region} navigate={navigate} notify={notify} />}
         {screen === "administrativo" && <Administrativo api={api} />}
         {screen === "score" && <ScoreCalculator api={api} hasPermission={hasPermission} />}

@@ -1,12 +1,74 @@
+import React from "react";
 import { BellPlus, X } from "lucide-react";
 import type { Processo } from "../types";
 import { scoreLabel, shortDate } from "../utils/format";
+
+const FOCUSABLE_SELECTOR = [
+  "button:not([disabled])",
+  "[href]",
+  "input:not([disabled])",
+  "select:not([disabled])",
+  "textarea:not([disabled])",
+  '[tabindex]:not([tabindex="-1"])'
+].join(", ");
 
 export function ProcessModal({ processo, close, follow }: {
   processo: Processo;
   close: () => void;
   follow: (processo: Processo) => void;
 }) {
+  const dialogRef = React.useRef<HTMLElement | null>(null);
+  const closeRef = React.useRef(close);
+  closeRef.current = close;
+
+  React.useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const previouslyFocused = document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+    const focusableElements = () =>
+      Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+
+    (focusableElements()[0] || dialog).focus();
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+
+      const elements = focusableElements();
+      if (!elements.length) {
+        event.preventDefault();
+        dialog.focus();
+        return;
+      }
+
+      const first = elements[0];
+      const last = elements[elements.length - 1];
+      const activeElement = document.activeElement;
+      const focusOutsideDialog = !dialog.contains(activeElement);
+
+      if (event.shiftKey && (activeElement === first || focusOutsideDialog)) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && (activeElement === last || focusOutsideDialog)) {
+        event.preventDefault();
+        first.focus();
+      }
+    }
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previouslyFocused?.isConnected) previouslyFocused.focus();
+    };
+  }, []);
+
   const rows = [
     ["Número CNJ", processo.numero_cnj],
     ["Tribunal", processo.tribunal],
@@ -25,7 +87,7 @@ export function ProcessModal({ processo, close, follow }: {
 
   return (
     <div className="modal-backdrop" role="presentation" onClick={close}>
-      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="process-modal-title" onClick={(event) => event.stopPropagation()}>
+      <section ref={dialogRef} className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="process-modal-title" tabIndex={-1} onClick={(event) => event.stopPropagation()}>
         <header className="modal-header">
           <div>
             <strong id="process-modal-title">{processo.numero_cnj || "Processo sem CNJ"}</strong>

@@ -1,7 +1,7 @@
 import React from "react";
 import { BellPlus, X } from "lucide-react";
-import type { Processo } from "../types";
-import { scoreLabel, shortDate } from "../utils/format";
+import { formatCivilDate } from "../map/model";
+import { scoreLabel } from "../utils/format";
 
 const FOCUSABLE_SELECTOR = [
   "button:not([disabled])",
@@ -12,18 +12,45 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])'
 ].join(", ");
 
-export function ProcessModal({ processo, close, follow }: {
-  processo: Processo;
+type ProcessModalData = {
+  numero_cnj?: string;
+  tribunal?: string;
+  comarca?: string;
+  vara?: string;
+  municipio?: string;
+  regiao_imea?: string;
+  classe_processual?: string;
+  assunto_principal?: string;
+  fase_atual?: string;
+  data_distribuicao?: string;
+  tipo_pericia_sugerida?: string;
+  urgencia?: string;
+  faixa_probabilidade?: string;
+  score_total?: number;
+  categorias_detectadas?: string;
+};
+
+type ProcessModalProps<T extends ProcessModalData> = {
+  processo: T;
   close: () => void;
-  follow: (processo: Processo) => void;
-}) {
+  follow: (processo: T) => void;
+  followDisabled?: boolean;
+};
+
+export function ProcessModal<T extends ProcessModalData>({
+  processo,
+  close,
+  follow,
+  followDisabled = false,
+}: ProcessModalProps<T>) {
   const dialogRef = React.useRef<HTMLElement | null>(null);
   const closeRef = React.useRef(close);
   closeRef.current = close;
 
   React.useEffect(() => {
-    const dialog = dialogRef.current;
-    if (!dialog) return;
+    const currentDialog = dialogRef.current;
+    if (!currentDialog) return;
+    const dialog: HTMLElement = currentDialog;
 
     const previouslyFocused = document.activeElement instanceof HTMLElement
       ? document.activeElement
@@ -79,7 +106,7 @@ export function ProcessModal({ processo, close, follow }: {
     ["Classe", processo.classe_processual],
     ["Assunto", processo.assunto_principal],
     ["Fase atual", processo.fase_atual],
-    ["Distribuição", shortDate(processo.data_distribuicao)],
+    ["Distribuição", formatCivilDate(processo.data_distribuicao)],
     ["Tipo de perícia sugerida", processo.tipo_pericia_sugerida],
     ["Urgência", processo.urgencia],
     ["Faixa", scoreLabel(processo.faixa_probabilidade)]
@@ -112,7 +139,7 @@ export function ProcessModal({ processo, close, follow }: {
         </div>
         <footer className="modal-actions">
           <button className="secondary" onClick={close}>Fechar</button>
-          <button className="primary" onClick={() => follow(processo)}><BellPlus size={14} /> Acompanhar processo</button>
+          <button className="primary" disabled={followDisabled} onClick={() => follow(processo)}><BellPlus size={14} /> Acompanhar processo</button>
         </footer>
       </section>
     </div>

@@ -16,16 +16,23 @@ import {
 import { Empty, ErrorState } from "../components/Empty";
 import { Page } from "../components/Page";
 import { ProcessModal } from "../components/ProcessModal";
-import { buildMapSummaryParams, markerTone } from "../map/model";
+import {
+  MAP_TONE_COLORS,
+  buildMapSummaryParams,
+  formatCivilDate,
+  markerTone,
+  parseProcessListResponse,
+  resolveTileConfig,
+} from "../map/model";
 import type {
   ApiClient,
   MapCitySummary,
   MapFilters,
+  MapProcess,
   MapSummaryResponse,
-  Processo,
   Screen,
 } from "../types";
-import { fmt, scoreLabel, shortDate } from "../utils/format";
+import { fmt, scoreLabel } from "../utils/format";
 
 const PAGE_SIZE = 10;
 const DEFAULT_CENTER: L.LatLngExpression = [-13.8, -55.9];
@@ -42,26 +49,10 @@ const EMPTY_SUMMARY: MapSummaryResponse = {
   sem_localizacao: 0,
   items: [],
 };
-const TILE_URL =
-  import.meta.env.VITE_MAP_TILE_URL ||
-  "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-const TILE_ATTRIBUTION =
-  import.meta.env.VITE_MAP_TILE_ATTRIBUTION ||
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
-
-const MARKER_COLORS: Record<ReturnType<typeof markerTone>, string> = {
-  critical: "#1f6b3a",
-  high: "#2f7d46",
-  medium: "#5c9966",
-  low: "#91b99a",
-};
-
-type ProcessListResponse = {
-  total: number;
-  offset: number;
-  limit: number;
-  items: Processo[];
-};
+const TILE_CONFIG = resolveTileConfig(
+  import.meta.env.VITE_MAP_TILE_URL,
+  import.meta.env.VITE_MAP_TILE_ATTRIBUTION,
+);
 
 type MapScreenProps = {
   api: ApiClient;
@@ -71,7 +62,7 @@ type MapScreenProps = {
 };
 
 function markerColor(tone: ReturnType<typeof markerTone>) {
-  return MARKER_COLORS[tone];
+  return MAP_TONE_COLORS[tone];
 }
 
 function hasFiniteCoordinates(city: MapCitySummary) {
@@ -83,14 +74,15 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
   const mapInstanceRef = React.useRef<L.Map | null>(null);
   const markerLayerRef = React.useRef<L.LayerGroup | null>(null);
   const summaryRequestRef = React.useRef(0);
+  const followInFlightRef = React.useRef(false);
   const [filters, setFilters] = React.useState<MapFilters>({ ...DEFAULT_FILTERS });
   const [appliedFilters, setAppliedFilters] = React.useState<MapFilters>({ ...DEFAULT_FILTERS });
   const [summary, setSummary] = React.useState<MapSummaryResponse>(EMPTY_SUMMARY);
   const [selectedCity, setSelectedCity] = React.useState<MapCitySummary | null>(null);
-  const [processes, setProcesses] = React.useState<Processo[]>([]);
+  const [processes, setProcesses] = React.useState<MapProcess[]>([]);
   const [processTotal, setProcessTotal] = React.useState(0);
   const [page, setPage] = React.useState(0);
-  const [selectedProcess, setSelectedProcess] = React.useState<Processo | null>(null);
+  const [selectedProcess, setSelectedProcess] = React.useState<MapProcess | null>(null);
   const [followingId, setFollowingId] = React.useState<number | null>(null);
   const [loadingSummary, setLoadingSummary] = React.useState(true);
   const [loadingProcesses, setLoadingProcesses] = React.useState(false);
@@ -110,8 +102,8 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
       attributionControl: true,
     });
     const markerLayer = L.layerGroup().addTo(map);
-    const tileLayer = L.tileLayer(TILE_URL, {
-      attribution: TILE_ATTRIBUTION,
+    const tileLayer = L.tileLayer(TILE_CONFIG.url, {
+      attribution: TILE_CONFIG.attribution,
       maxZoom: 18,
     });
     const handleTileError = () => setTilesAvailable(false);
@@ -196,6 +188,10 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
       layer: L.CircleMarker | L.Marker;
       activate: () => void;
     }> = [];
+    const keyboardBindings: Array<{
+      element: HTMLElement | null | undefined;
+      handleMarkerKeyDown: (event: KeyboardEvent) => void;
+    }> = [];
 
     summary.items.filter(hasFiniteCoordinates).forEach((city) => {
       const selected = city.municipio === selectedCity?.municipio;
@@ -208,8 +204,10 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
         fillColor: markerColor(markerTone(city.faixa_dominante)),
         fillOpacity: 1,
       });
+      const faixaLabel = scoreLabel(city.faixa_dominante);
+      const accessibleName = `${city.municipio}, ${fmt(city.total_processos)} processos, faixa ${faixaLabel}`;
       const tooltipNode = document.createElement("div");
-      tooltipNode.textContent = `${city.municipio}: ${fmt(city.total_processos)} processos, maior score ${fmt(city.maior_score)}`;
+      tooltipNode.textContent = `${city.municipio}: ${fmt(city.total_processos)} processos, maior score ${fmt(city.maior_score)}. Faixa ${faixaLabel}`;
       marker.bindTooltip(tooltipNode, {
         className: "map-city-tooltip",
         direction: "top",
@@ -230,19 +228,34 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
         iconAnchor: [13, 13],
       });
       const countMarker = L.marker(coordinates, {
-        alt: `${city.municipio}, ${fmt(city.total_processos)} processos`,
         icon: countIcon,
-        keyboard: true,
-        title: `Selecionar ${city.municipio}`,
+        keyboard: false,
+        title: accessibleName,
         zIndexOffset: selected ? 1000 : 0,
       });
       countMarker.on("click", activate);
       countMarker.addTo(markerLayer);
+      const markerElement = countMarker.getElement();
+      const handleMarkerKeyDown = (event: KeyboardEvent) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        activate();
+      };
+      if (markerElement) {
+        markerElement.setAttribute("role", "button");
+        markerElement.setAttribute("tabindex", "0");
+        markerElement.setAttribute("aria-label", accessibleName);
+        markerElement.addEventListener("keydown", handleMarkerKeyDown);
+      }
       clickBindings.push({ layer: marker, activate }, { layer: countMarker, activate });
+      keyboardBindings.push({ element: markerElement, handleMarkerKeyDown });
     });
 
     return () => {
       clickBindings.forEach(({ layer, activate }) => layer.off("click", activate));
+      keyboardBindings.forEach(({ element, handleMarkerKeyDown }) => {
+        element?.removeEventListener("keydown", handleMarkerKeyDown);
+      });
       markerLayer.clearLayers();
     };
   }, [selectCity, selectedCity?.municipio, summary.items]);
@@ -266,13 +279,15 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
   }, [summary.items]);
 
   React.useEffect(() => {
-    if (!selectedCity) {
+    const city = selectedCity;
+    if (!city) {
       setProcesses([]);
       setProcessTotal(0);
       setProcessError("");
       setLoadingProcesses(false);
       return;
     }
+    const selectedMunicipio = city.municipio;
 
     let active = true;
     async function loadProcesses() {
@@ -282,20 +297,19 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
         limit: "10",
         offset: String(page * PAGE_SIZE),
       });
-      params.set("municipio", selectedCity.municipio);
+      params.set("municipio", selectedMunicipio);
       const effectiveRegion = region || appliedFilters.regiao;
       if (effectiveRegion) params.set("regiao", effectiveRegion);
       if (appliedFilters.faixa) params.set("faixa", appliedFilters.faixa);
       if (appliedFilters.dataInicio) params.set("data_inicio", appliedFilters.dataInicio);
       if (appliedFilters.dataFim) params.set("data_fim", appliedFilters.dataFim);
 
-      const data = await api.get<ProcessListResponse>(
+      const payload = await api.get<unknown>(
         `/api/processos?${params.toString()}`,
       );
       if (!active) return;
+      const data = parseProcessListResponse(payload);
       if (!data) {
-        setProcesses([]);
-        setProcessTotal(0);
         setProcessError("Não foi possível carregar os processos deste município.");
         setLoadingProcesses(false);
         return;
@@ -325,24 +339,30 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
     };
   }, [api, appliedFilters, page, processRefresh, region, selectedCity]);
 
-  async function followProcess(processo: Processo) {
+  async function followProcess(processo: MapProcess) {
     const id = Number(processo.id);
     if (!Number.isInteger(id) || id <= 0) {
       notify("Processo sem identificador interno.");
       return;
     }
+    if (followInFlightRef.current) return;
 
+    followInFlightRef.current = true;
     setFollowingId(id);
-    const result = await api.post<{ status: string }>(
-      `/api/processos/${id}/acompanhar`,
-    );
-    setFollowingId(null);
-    if (result?.status === "ok") {
-      notify("Processo adicionado à Central de Alertas.");
-      navigate("alertas");
-      return;
+    try {
+      const result = await api.post<{ status: string }>(
+        `/api/processos/${id}/acompanhar`,
+      );
+      if (result?.status === "ok") {
+        notify("Processo adicionado à Central de Alertas.");
+        navigate("alertas");
+        return;
+      }
+      notify("Não foi possível acompanhar este processo.");
+    } finally {
+      followInFlightRef.current = false;
+      setFollowingId(null);
     }
-    notify("Não foi possível acompanhar este processo.");
   }
 
   function applyFilters(event: React.FormEvent<HTMLFormElement>) {
@@ -394,9 +414,24 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
           <div className="map-canvas-frame">
             <div ref={mapContainerRef} className="leaflet-map" />
 
-            {loadingSummary && (
-              <div className="map-status-overlay" role="status">
-                <span className="spinner" /> Carregando municípios...
+            {(loadingSummary || !tilesAvailable || TILE_CONFIG.warning) && (
+              <div className="map-overlay-stack">
+                {loadingSummary && (
+                  <div className="map-status-overlay" role="status">
+                    <span className="spinner" /> Carregando municípios...
+                  </div>
+                )}
+                {!tilesAvailable && (
+                  <div className="map-tile-warning" role="status">
+                    <TriangleAlert size={15} />
+                    Basemap indisponível. Os dados permanecem navegáveis.
+                  </div>
+                )}
+                {TILE_CONFIG.warning && (
+                  <div className="map-config-warning" role="status">
+                    <TriangleAlert size={15} /> {TILE_CONFIG.warning}
+                  </div>
+                )}
               </div>
             )}
             {!loadingSummary && !summaryError && !summary.items.length && (
@@ -409,12 +444,7 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
                 </button>
               </div>
             )}
-            {!tilesAvailable && (
-              <div className="map-tile-warning" role="status">
-                <TriangleAlert size={15} />
-                Basemap indisponível. Os dados permanecem navegáveis.
-              </div>
-            )}
+
             <MapLegend />
           </div>
 
@@ -443,6 +473,7 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
           processo={selectedProcess}
           close={() => setSelectedProcess(null)}
           follow={followProcess}
+          followDisabled={followingId !== null}
         />
       )}
     </Page>
@@ -563,7 +594,7 @@ function MunicipalPanel({
 }: {
   city: MapCitySummary | null;
   cities: MapCitySummary[];
-  processes: Processo[];
+  processes: MapProcess[];
   processTotal: number;
   page: number;
   pageCount: number;
@@ -574,8 +605,8 @@ function MunicipalPanel({
   clearSelection: () => void;
   retry: () => void;
   setPage: React.Dispatch<React.SetStateAction<number>>;
-  openProcess: (processo: Processo) => void;
-  followProcess: (processo: Processo) => void;
+  openProcess: (processo: MapProcess) => void;
+  followProcess: (processo: MapProcess) => void;
 }) {
   if (!city) {
     const leadingCities = [...cities]
@@ -640,12 +671,12 @@ function MunicipalPanel({
                 </div>
                 <span className="map-process-class">{processo.classe_processual || "Classe não informada"}</span>
                 <div className="map-process-meta">
-                  <span>{shortDate(processo.data_distribuicao)}</span>
+                  <span>{formatCivilDate(processo.data_distribuicao)}</span>
                   <span>{scoreLabel(processo.faixa_probabilidade)}</span>
                 </div>
                 <div className="map-process-actions">
                   <button className="secondary" onClick={() => openProcess(processo)}><Eye size={13} /> Detalhes</button>
-                  <button className="secondary" disabled={followingId === id} onClick={() => followProcess(processo)}><BellPlus size={13} /> Acompanhar</button>
+                  <button className="secondary" disabled={followingId !== null} onClick={() => followProcess(processo)}><BellPlus size={13} /> Acompanhar</button>
                 </div>
               </article>
             );

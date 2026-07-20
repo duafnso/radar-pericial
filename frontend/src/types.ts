@@ -21,6 +21,34 @@ export type ApiUser = {
 };
 
 export type Processo = Record<string, any>;
+
+export type MapProcess = Record<string, unknown> & {
+  id: number;
+  numero_cnj: string;
+  tribunal: string;
+  comarca: string;
+  vara: string;
+  municipio: string;
+  regiao_imea: string;
+  classe_processual: string;
+  assunto_principal: string;
+  data_distribuicao: string;
+  fase_atual: string;
+  origem: string;
+  score_total: number;
+  faixa_probabilidade: string;
+  faixa_label: string;
+  tipo_pericia_sugerida: string;
+  categorias_detectadas: string;
+  urgencia: string;
+};
+
+export type MapProcessListResponse = {
+  total: number;
+  offset: number;
+  limit: number;
+  items: MapProcess[];
+};
 export type Coleta = Record<string, any>;
 
 export type NavItem = {

@@ -441,3 +441,49 @@ def test_resumo_mapa_processos_aggregates_before_city_limit(monkeypatch):
         for key, value in items_params.items()
         if key != "limit_cidades"
     }
+
+
+def test_listar_processos_uses_normalized_exact_municipality_without_wildcards(monkeypatch):
+    from database.db import Database
+
+    db = Database.__new__(Database)
+    calls = []
+
+    def fake_query(sql, params=None):
+        calls.append((sql, params or {}))
+        if "SELECT COUNT(*)" in sql:
+            return pd.DataFrame([[1]])
+        return pd.DataFrame([{"id": 1, "municipio": "Vera"}])
+
+    monkeypatch.setattr(db, "query", fake_query)
+
+    result = db.listar_processos({"municipio_exato": "Vera"}, limit=10, offset=0)
+
+    assert result["total"] == 1
+    for sql, params in calls:
+        assert "lower(regexp_replace(btrim(p.municipio)" in sql
+        assert "ILIKE :municipio" not in sql
+        assert params["municipio_exato"] == "Vera"
+        assert "%" not in params["municipio_exato"]
+
+
+def test_listar_processos_keeps_partial_municipality_search(monkeypatch):
+    from database.db import Database
+
+    db = Database.__new__(Database)
+    calls = []
+
+    def fake_query(sql, params=None):
+        calls.append((sql, params or {}))
+        if "SELECT COUNT(*)" in sql:
+            return pd.DataFrame([[1]])
+        return pd.DataFrame([{"id": 1, "municipio": "Primavera do Leste"}])
+
+    monkeypatch.setattr(db, "query", fake_query)
+
+    db.listar_processos({"municipio": "Vera"}, limit=10, offset=0)
+
+    for sql, params in calls:
+        assert "p.municipio ILIKE :municipio" in sql
+        assert params["municipio"] == "%Vera%"
+        assert "municipio_exato" not in params

@@ -19,6 +19,8 @@ class FakeDb:
             "token-viewer": {"id": 4, "username": "viewer", "role": "viewer"},
         }
 
+        self.process_filters = None
+
     def check_login(self, username, password):
         return username == "admin" and password == "Admin12345!"
 
@@ -65,6 +67,16 @@ class FakeDb:
                 ]
             )
         return pd.DataFrame()
+
+    def listar_processos(self, filtros, limit=20, offset=0):
+        self.process_filters = filtros
+        rows = self.query("FROM processos", {})
+        return {
+            "total": 1,
+            "offset": offset,
+            "limit": limit,
+            "items": rows.fillna("").to_dict(orient="records"),
+        }
 
     def resumo_mapa_processos(self, filtros, limit_cidades=200):
         self.map_filters = filtros
@@ -397,6 +409,32 @@ def test_processos_endpoint_returns_items(api_client):
     assert payload["total"] == 1
     assert payload["items"][0]["numero_cnj"] == "0000001-00.2026.8.11.0001"
     assert payload["items"][0]["score_total"] == 88
+
+
+def test_processos_endpoint_forwards_exact_municipality_filter(api_client):
+    client, fake_db = api_client
+
+    response = client.get(
+        "/api/processos?municipio=Vera&municipio_exato=true",
+        headers=auth_header("token-viewer"),
+    )
+
+    assert response.status_code == 200
+    assert fake_db.process_filters["municipio_exato"] == "Vera"
+    assert "municipio" not in fake_db.process_filters
+
+
+def test_processos_endpoint_preserves_partial_municipality_filter(api_client):
+    client, fake_db = api_client
+
+    response = client.get(
+        "/api/processos?municipio=Vera",
+        headers=auth_header("token-viewer"),
+    )
+
+    assert response.status_code == 200
+    assert fake_db.process_filters["municipio"] == "Vera"
+    assert "municipio_exato" not in fake_db.process_filters
 
 
 def test_coletas_status_requires_operational_permission(api_client):

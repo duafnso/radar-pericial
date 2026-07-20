@@ -722,34 +722,28 @@ async def stats(regiao: Optional[str] = Query(None), _user: AuthUser = None):
 @app.get("/api/processos")
 async def processos(
     faixa: Optional[str] = Query(None), municipio: Optional[str] = Query(None),
+    municipio_exato: bool = Query(False),
     regiao: Optional[str] = Query(None), classe: Optional[str] = Query(None),
     data_inicio: Optional[str] = Query(None), data_fim: Optional[str] = Query(None),
     limit: int = Query(20, le=500), offset: int = Query(0), _user: AuthUser = None
 ):
     try:
-        if not _db: return {"total": 0, "items": []}
-        w, p = [], {"limit": limit, "offset": offset}
-        if faixa: w.append("s.faixa_probabilidade = :faixa"); p["faixa"] = faixa
-        if municipio: w.append("p.municipio ILIKE :mun"); p["mun"] = f"%{municipio}%"
-        if regiao: w.append("p.regiao_imea = :regiao"); p["regiao"] = regiao
-        if classe: w.append("p.classe_processual ILIKE :classe"); p["classe"] = f"%{classe}%"
-        if data_inicio: w.append("p.data_distribuicao >= :data_inicio"); p["data_inicio"] = data_inicio
-        if data_fim: w.append("p.data_distribuicao <= :data_fim"); p["data_fim"] = data_fim
-        where = ("WHERE " + " AND ".join(w)) if w else ""
-        sql = f"""
-            SELECT p.id, p.numero_cnj, p.tribunal, p.comarca, p.vara,
-                   p.classe_processual, p.assunto_principal,
-                   p.data_distribuicao::text AS data_distribuicao,
-                   p.fase_atual, p.municipio, p.regiao_imea, p.origem,
-                   s.score_total, s.faixa_probabilidade, s.faixa_label,
-                   s.tipo_pericia_sugerida, s.categorias_detectadas, s.urgencia
-            FROM processos p LEFT JOIN score_pericial s ON s.processo_id = p.id
-            {where} ORDER BY s.score_total DESC NULLS LAST LIMIT :limit OFFSET :offset
-        """
-        df = _db.query(sql, p)
-        cnt_p = {k: v for k, v in p.items() if k not in ("limit", "offset")}
-        total = int(_db.query(f"SELECT COUNT(*) FROM processos p LEFT JOIN score_pericial s ON s.processo_id=p.id {where}", cnt_p).iloc[0, 0])
-        return {"total": total, "offset": offset, "limit": limit, "items": df.fillna("").to_dict(orient="records")}
+        if not _db:
+            return {"total": 0, "items": []}
+        filtros = {
+            key: value
+            for key, value in {
+                "faixa": faixa,
+                "regiao": regiao,
+                "classe": classe,
+                "data_inicio": data_inicio,
+                "data_fim": data_fim,
+            }.items()
+            if value
+        }
+        if municipio:
+            filtros["municipio_exato" if municipio_exato else "municipio"] = municipio
+        return _db.listar_processos(filtros, limit=limit, offset=offset)
     except Exception as e:
         logger.error(f"processos: {e}")
         return {"total": 0, "items": []}

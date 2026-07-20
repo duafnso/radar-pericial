@@ -258,6 +258,24 @@ describe("municipal process panel", () => {
     expect(screen.queryByText(/21:00|00:00/)).not.toBeInTheDocument();
   });
 
+  it("clears stale rows and total when a later page response is invalid", async () => {
+    const api = createApi((path) => path.includes("offset=10")
+      ? { total: 0, items: [] }
+      : { total: 11, offset: 0, limit: 10, items: [processItem(1, "STALE-PROCESS")] });
+    renderMap(api);
+
+    await selectCuiaba();
+    expect(await screen.findByText("STALE-PROCESS")).toBeInTheDocument();
+    expect(screen.getByText(/11 processos/)).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Próxima página" }));
+
+    expect(await screen.findByText("Não foi possível carregar os processos deste município.")).toBeInTheDocument();
+    expect(screen.queryByText("STALE-PROCESS")).not.toBeInTheDocument();
+    expect(screen.queryByText(/11 processos/)).not.toBeInTheDocument();
+    expect(screen.getByText(/0 processos/)).toBeInTheDocument();
+  });
+
   it("selects, centers and requests the next ten-process page", async () => {
     const api = createApi((path) => path.includes("offset=10")
       ? { total: 11, offset: 10, limit: 10, items: [processItem(11, "PAGE-2")] }
@@ -273,6 +291,50 @@ describe("municipal process panel", () => {
     expect(await screen.findByText("PAGE-2")).toBeInTheDocument();
     expect(api.get).toHaveBeenCalledWith(expect.stringContaining("limit=10&offset=10"));
     expect(api.get).toHaveBeenCalledWith(expect.stringContaining("municipio=Cuiab%C3%A1"));
+    expect(api.get).toHaveBeenCalledWith(expect.stringContaining("municipio_exato=true"));
+  });
+});
+
+describe("summary request ordering", () => {
+  it("discards an older summary response resolved after the current request", async () => {
+    let resolveOlder: (value: MapSummaryResponse) => void = () => undefined;
+    let resolveCurrent: (value: MapSummaryResponse) => void = () => undefined;
+    const older = new Promise<MapSummaryResponse>((resolve) => {
+      resolveOlder = resolve;
+    });
+    const current = new Promise<MapSummaryResponse>((resolve) => {
+      resolveCurrent = resolve;
+    });
+    const currentSummary: MapSummaryResponse = {
+      ...summary,
+      items: [{
+        ...summary.items[0],
+        municipio: "Sinop",
+        regiao_imea: "Norte",
+      }],
+    };
+    const api = createApi({ total: 0, offset: 0, limit: 10, items: [] });
+    api.get = vi.fn((path: string) => {
+      if (!path.startsWith("/api/processos/mapa/resumo")) {
+        return Promise.resolve({ total: 0, offset: 0, limit: 10, items: [] });
+      }
+      return path.includes("regiao=Norte") ? current : older;
+    });
+    const view = renderMap(api);
+
+    view.rerender(
+      <MapScreen api={api} region="Norte" navigate={vi.fn()} notify={vi.fn()} />,
+    );
+    resolveCurrent(currentSummary);
+    expect(await screen.findByRole("button", { name: /Sinop.*Norte.*2/i })).toBeInTheDocument();
+
+    resolveOlder(summary);
+    await act(async () => {
+      await older;
+    });
+
+    expect(screen.getByRole("button", { name: /Sinop.*Norte.*2/i })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cuiabá.*Centro-Sul.*2/i })).not.toBeInTheDocument();
   });
 });
 

@@ -298,6 +298,7 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
         offset: String(page * PAGE_SIZE),
       });
       params.set("municipio", selectedMunicipio);
+      params.set("municipio_exato", "true");
       const effectiveRegion = region || appliedFilters.regiao;
       if (effectiveRegion) params.set("regiao", effectiveRegion);
       if (appliedFilters.faixa) params.set("faixa", appliedFilters.faixa);
@@ -310,6 +311,8 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
       if (!active) return;
       const data = parseProcessListResponse(payload);
       if (!data) {
+        setProcesses([]);
+        setProcessTotal(0);
         setProcessError("Não foi possível carregar os processos deste município.");
         setLoadingProcesses(false);
         return;

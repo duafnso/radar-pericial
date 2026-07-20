@@ -1609,6 +1609,71 @@ class Database:
             """
         )
 
+    def listar_processos(
+        self,
+        filtros: dict,
+        limit: int = 20,
+        offset: int = 0,
+    ) -> dict:
+        where_parts = []
+        params = {"limit": limit, "offset": offset}
+        mapping = {
+            "faixa": ("s.faixa_probabilidade = :faixa", "faixa"),
+            "regiao": ("p.regiao_imea = :regiao", "regiao"),
+            "classe": ("p.classe_processual ILIKE :classe", "classe"),
+            "data_inicio": ("p.data_distribuicao >= :data_inicio", "data_inicio"),
+            "data_fim": ("p.data_distribuicao <= :data_fim", "data_fim"),
+        }
+        for key, (clause, param_name) in mapping.items():
+            value = filtros.get(key)
+            if not value:
+                continue
+            where_parts.append(clause)
+            params[param_name] = f"%{value}%" if key == "classe" else value
+
+        municipio_exato = filtros.get("municipio_exato")
+        if municipio_exato:
+            where_parts.append(
+                "lower(regexp_replace(btrim(p.municipio), '[[:space:]]+', ' ', 'g')) "
+                "= lower(regexp_replace(btrim(:municipio_exato), '[[:space:]]+', ' ', 'g'))"
+            )
+            params["municipio_exato"] = municipio_exato
+        elif filtros.get("municipio"):
+            where_parts.append("p.municipio ILIKE :municipio")
+            params["municipio"] = f"%{filtros['municipio']}%"
+
+        where = "WHERE " + " AND ".join(where_parts) if where_parts else ""
+        items = self.query(f"""
+            SELECT p.id, p.numero_cnj, p.tribunal, p.comarca, p.vara,
+                   p.classe_processual, p.assunto_principal,
+                   p.data_distribuicao::text AS data_distribuicao,
+                   p.fase_atual, p.municipio, p.regiao_imea, p.origem,
+                   s.score_total, s.faixa_probabilidade, s.faixa_label,
+                   s.tipo_pericia_sugerida, s.categorias_detectadas, s.urgencia
+            FROM processos p
+            LEFT JOIN score_pericial s ON s.processo_id = p.id
+            {where}
+            ORDER BY s.score_total DESC NULLS LAST
+            LIMIT :limit OFFSET :offset
+        """, params)
+        count_params = {
+            key: value
+            for key, value in params.items()
+            if key not in {"limit", "offset"}
+        }
+        total = int(self.query(f"""
+            SELECT COUNT(*)
+            FROM processos p
+            LEFT JOIN score_pericial s ON s.processo_id = p.id
+            {where}
+        """, count_params).iloc[0, 0])
+        return {
+            "total": total,
+            "offset": offset,
+            "limit": limit,
+            "items": items.fillna("").to_dict(orient="records"),
+        }
+
     def resumo_mapa_processos(self, filtros: dict, limit_cidades: int = 200) -> dict:
         where_parts = []
         params = {"limit_cidades": max(1, min(int(limit_cidades), 200))}

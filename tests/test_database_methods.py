@@ -393,7 +393,13 @@ def test_resumo_mapa_processos_aggregates_before_city_limit(monkeypatch):
     monkeypatch.setattr(db, "query", fake_query)
 
     result = db.resumo_mapa_processos(
-        {"regiao": "Centro-Sul", "faixa": "janela_quente"},
+        {
+            "regiao": "Centro-Sul",
+            "municipio": "cuiaba",
+            "faixa": "janela_quente",
+            "data_inicio": "2026-01-01",
+            "data_fim": "2026-07-19",
+        },
         limit_cidades=100,
     )
 
@@ -401,5 +407,37 @@ def test_resumo_mapa_processos_aggregates_before_city_limit(monkeypatch):
     assert result["sem_localizacao"] == 27
     assert result["total_municipios"] == 73
     assert result["items"][0]["total_processos"] == 152
-    assert "GROUP BY" in calls[0][0]
-    assert calls[0][1]["limit_cidades"] == 100
+    items_sql, items_params = calls[0]
+    totals_sql, totals_params = calls[1]
+    for sql in (items_sql, totals_sql):
+        assert sql.count("LEFT JOIN LATERAL") == 1
+        assert "ORDER BY sp.calculado_em DESC NULLS LAST, sp.id DESC" in sql
+        assert sql.count("LIMIT 1") == 1
+        assert "LEFT JOIN score_pericial s ON s.processo_id = p.id" not in sql
+        for clause in (
+            "p.regiao_imea = :regiao",
+            "p.municipio ILIKE :municipio",
+            "s.faixa_probabilidade = :faixa",
+            "p.data_distribuicao >= :data_inicio",
+            "p.data_distribuicao <= :data_fim",
+        ):
+            assert clause in sql
+    assert "m.nome AS municipio" in items_sql
+    assert "COUNT(DISTINCT m.nome)" in totals_sql
+    assert "CASE COALESCE(faixa_probabilidade, 'frio')" in items_sql
+    assert "COALESCE(faixa_probabilidade, 'frio') ASC" in items_sql
+    assert "GROUP BY municipio, geometry" in items_sql
+    assert "ST_PointOnSurface(geometry)" in items_sql
+    assert items_params == {
+        "limit_cidades": 100,
+        "regiao": "Centro-Sul",
+        "municipio": "%cuiaba%",
+        "faixa": "janela_quente",
+        "data_inicio": "2026-01-01",
+        "data_fim": "2026-07-19",
+    }
+    assert totals_params == {
+        key: value
+        for key, value in items_params.items()
+        if key != "limit_cidades"
+    }

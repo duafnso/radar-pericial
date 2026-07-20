@@ -1630,10 +1630,16 @@ class Database:
 
         items = self.query(f"""
             WITH filtrados AS (
-                SELECT p.id, p.municipio, p.regiao_imea, p.data_distribuicao,
+                SELECT p.id, m.nome AS municipio, p.regiao_imea, p.data_distribuicao,
                        s.score_total, s.faixa_probabilidade, m.geometry
                 FROM processos p
-                LEFT JOIN score_pericial s ON s.processo_id = p.id
+                LEFT JOIN LATERAL (
+                    SELECT sp.score_total, sp.faixa_probabilidade
+                    FROM score_pericial sp
+                    WHERE sp.processo_id = p.id
+                    ORDER BY sp.calculado_em DESC NULLS LAST, sp.id DESC
+                    LIMIT 1
+                ) s ON TRUE
                 LEFT JOIN municipios_mt m ON lower(m.nome) = lower(p.municipio)
                 {where}
             )
@@ -1646,7 +1652,15 @@ class Database:
                    COUNT(*) FILTER (WHERE faixa_probabilidade = 'janela_quente')::int AS processos_quentes,
                    COUNT(*) FILTER (WHERE faixa_probabilidade = 'provavel')::int AS processos_provaveis,
                    (ARRAY_AGG(COALESCE(faixa_probabilidade, 'frio')
-                      ORDER BY COALESCE(score_total, 0) DESC))[1] AS faixa_dominante,
+                      ORDER BY COALESCE(score_total, 0) DESC,
+                               CASE COALESCE(faixa_probabilidade, 'frio')
+                                   WHEN 'janela_quente' THEN 4
+                                   WHEN 'provavel' THEN 3
+                                   WHEN 'observacao' THEN 2
+                                   WHEN 'frio' THEN 1
+                                   ELSE 0
+                               END DESC,
+                               COALESCE(faixa_probabilidade, 'frio') ASC))[1] AS faixa_dominante,
                    MAX(data_distribuicao)::text AS ultima_distribuicao
             FROM filtrados
             WHERE geometry IS NOT NULL
@@ -1657,11 +1671,17 @@ class Database:
         count_params = {key: value for key, value in params.items() if key != "limit_cidades"}
         totals = self.query(f"""
             SELECT COUNT(*) FILTER (WHERE m.geometry IS NOT NULL)::int AS total_processos,
-                   COUNT(DISTINCT p.municipio)
+                   COUNT(DISTINCT m.nome)
                        FILTER (WHERE m.geometry IS NOT NULL)::int AS total_municipios,
                    COUNT(*) FILTER (WHERE m.geometry IS NULL)::int AS sem_localizacao
             FROM processos p
-            LEFT JOIN score_pericial s ON s.processo_id = p.id
+            LEFT JOIN LATERAL (
+                SELECT sp.score_total, sp.faixa_probabilidade
+                FROM score_pericial sp
+                WHERE sp.processo_id = p.id
+                ORDER BY sp.calculado_em DESC NULLS LAST, sp.id DESC
+                LIMIT 1
+            ) s ON TRUE
             LEFT JOIN municipios_mt m ON lower(m.nome) = lower(p.municipio)
             {where}
         """, count_params).iloc[0]

@@ -585,7 +585,8 @@ def test_processos_mapa_resumo_returns_aggregated_cities(api_client):
 
     response = client.get(
         "/api/processos/mapa/resumo?regiao=Centro-Sul&faixa=janela_quente"
-        "&data_inicio=2026-01-01&limit_cidades=100",
+        "&municipio=Cuiaba&data_inicio=2026-01-01&data_fim=2026-07-19"
+        "&limit_cidades=100",
         headers=auth_header("token-viewer"),
     )
     payload = response.json()
@@ -596,3 +597,72 @@ def test_processos_mapa_resumo_returns_aggregated_cities(api_client):
     assert payload["items"][0]["municipio"] == "Cuiaba"
     assert fake_db.map_filters["regiao"] == "Centro-Sul"
     assert fake_db.map_filters["faixa"] == "janela_quente"
+    assert fake_db.map_filters["municipio"] == "Cuiaba"
+    assert fake_db.map_filters["data_inicio"] == "2026-01-01"
+    assert fake_db.map_filters["data_fim"] == "2026-07-19"
+    assert fake_db.map_limit_cidades == 100
+
+
+def test_processos_mapa_resumo_requires_authentication(api_client):
+    client, _ = api_client
+
+    response = client.get("/api/processos/mapa/resumo")
+
+    assert response.status_code == 401
+
+
+@pytest.mark.parametrize("limit_cidades", [0, 201])
+def test_processos_mapa_resumo_rejects_invalid_city_limit(
+    api_client,
+    limit_cidades,
+):
+    client, _ = api_client
+
+    response = client.get(
+        f"/api/processos/mapa/resumo?limit_cidades={limit_cidades}",
+        headers=auth_header("token-viewer"),
+    )
+
+    assert response.status_code == 422
+
+
+def test_processos_mapa_resumo_returns_503_when_database_is_unavailable(
+    api_client,
+    monkeypatch,
+):
+    import api.main as main_module
+
+    client, _ = api_client
+    monkeypatch.setattr(main_module, "_db", None)
+
+    response = client.get(
+        "/api/processos/mapa/resumo",
+        headers=auth_header("token-viewer"),
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Banco de dados n\u00e3o inicializado"
+
+
+def test_processos_mapa_resumo_returns_500_on_unexpected_error(
+    api_client,
+    monkeypatch,
+):
+    client, fake_db = api_client
+
+    def raise_unexpected_error(*_args, **_kwargs):
+        raise RuntimeError("database failed")
+
+    monkeypatch.setattr(
+        fake_db,
+        "resumo_mapa_processos",
+        raise_unexpected_error,
+    )
+
+    response = client.get(
+        "/api/processos/mapa/resumo",
+        headers=auth_header("token-viewer"),
+    )
+
+    assert response.status_code == 500
+    assert response.json()["detail"] == "Erro ao resumir mapa de processos"

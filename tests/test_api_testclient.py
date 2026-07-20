@@ -66,6 +66,26 @@ class FakeDb:
             )
         return pd.DataFrame()
 
+    def resumo_mapa_processos(self, filtros, limit_cidades=200):
+        self.map_filters = filtros
+        self.map_limit_cidades = limit_cidades
+        return {
+            "total_processos": 702,
+            "total_municipios": 1,
+            "sem_localizacao": 27,
+            "items": [{
+                "municipio": "Cuiaba",
+                "regiao_imea": "Centro-Sul",
+                "lat": -15.4156,
+                "lng": -56.0517,
+                "total_processos": 152,
+                "maior_score": 88,
+                "processos_quentes": 4,
+                "processos_provaveis": 12,
+                "faixa_dominante": "janela_quente",
+                "ultima_distribuicao": "2026-07-01",
+            }],
+        }
     def stats(self, regiao=None):
         return {
             "total_processos": 1,
@@ -558,3 +578,21 @@ def test_sensitive_action_rate_limit_blocks_collection(api_client, monkeypatch):
     assert second.status_code == 429
 
 
+
+
+def test_processos_mapa_resumo_returns_aggregated_cities(api_client):
+    client, fake_db = api_client
+
+    response = client.get(
+        "/api/processos/mapa/resumo?regiao=Centro-Sul&faixa=janela_quente"
+        "&data_inicio=2026-01-01&limit_cidades=100",
+        headers=auth_header("token-viewer"),
+    )
+    payload = response.json()
+
+    assert response.status_code == 200
+    assert payload["total_processos"] == 702
+    assert payload["total_municipios"] == 1
+    assert payload["items"][0]["municipio"] == "Cuiaba"
+    assert fake_db.map_filters["regiao"] == "Centro-Sul"
+    assert fake_db.map_filters["faixa"] == "janela_quente"

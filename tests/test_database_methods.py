@@ -360,3 +360,46 @@ def test_auditoria_qualidade_processos_calculates_summary(monkeypatch):
     assert result["problemas"][0]["codigo"] == "sem_cnj"
     assert result["problemas"][4]["codigo"] == "sem_score"
     assert any("municipios_mt" in sql for sql in captured_sql)
+
+def test_resumo_mapa_processos_aggregates_before_city_limit(monkeypatch):
+    from database.db import Database
+
+    db = Database.__new__(Database)
+    responses = iter([
+        pd.DataFrame([{
+            "municipio": "Cuiaba",
+            "regiao_imea": "Centro-Sul",
+            "lat": -15.4156,
+            "lng": -56.0517,
+            "total_processos": 152,
+            "maior_score": 88,
+            "processos_quentes": 4,
+            "processos_provaveis": 12,
+            "faixa_dominante": "janela_quente",
+            "ultima_distribuicao": "2026-07-01",
+        }]),
+        pd.DataFrame([{
+            "total_processos": 702,
+            "total_municipios": 73,
+            "sem_localizacao": 27,
+        }]),
+    ])
+    calls = []
+
+    def fake_query(sql, params=None):
+        calls.append((sql, params or {}))
+        return next(responses)
+
+    monkeypatch.setattr(db, "query", fake_query)
+
+    result = db.resumo_mapa_processos(
+        {"regiao": "Centro-Sul", "faixa": "janela_quente"},
+        limit_cidades=100,
+    )
+
+    assert result["total_processos"] == 702
+    assert result["sem_localizacao"] == 27
+    assert result["total_municipios"] == 73
+    assert result["items"][0]["total_processos"] == 152
+    assert "GROUP BY" in calls[0][0]
+    assert calls[0][1]["limit_cidades"] == 100

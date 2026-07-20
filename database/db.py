@@ -1609,6 +1609,69 @@ class Database:
             """
         )
 
+    def resumo_mapa_processos(self, filtros: dict, limit_cidades: int = 200) -> dict:
+        where_parts = []
+        params = {"limit_cidades": max(1, min(int(limit_cidades), 200))}
+        mapping = {
+            "regiao": ("p.regiao_imea = :regiao", "regiao"),
+            "faixa": ("s.faixa_probabilidade = :faixa", "faixa"),
+            "data_inicio": ("p.data_distribuicao >= :data_inicio", "data_inicio"),
+            "data_fim": ("p.data_distribuicao <= :data_fim", "data_fim"),
+        }
+        for key, (clause, param_name) in mapping.items():
+            value = filtros.get(key)
+            if value:
+                where_parts.append(clause)
+                params[param_name] = value
+        if filtros.get("municipio"):
+            where_parts.append("p.municipio ILIKE :municipio")
+            params["municipio"] = f"%{filtros['municipio']}%"
+        where = "WHERE " + " AND ".join(where_parts) if where_parts else ""
+
+        items = self.query(f"""
+            WITH filtrados AS (
+                SELECT p.id, p.municipio, p.regiao_imea, p.data_distribuicao,
+                       s.score_total, s.faixa_probabilidade, m.geometry
+                FROM processos p
+                LEFT JOIN score_pericial s ON s.processo_id = p.id
+                LEFT JOIN municipios_mt m ON lower(m.nome) = lower(p.municipio)
+                {where}
+            )
+            SELECT municipio,
+                   MAX(regiao_imea) AS regiao_imea,
+                   ST_Y(ST_PointOnSurface(geometry)) AS lat,
+                   ST_X(ST_PointOnSurface(geometry)) AS lng,
+                   COUNT(*)::int AS total_processos,
+                   COALESCE(MAX(score_total), 0)::int AS maior_score,
+                   COUNT(*) FILTER (WHERE faixa_probabilidade = 'janela_quente')::int AS processos_quentes,
+                   COUNT(*) FILTER (WHERE faixa_probabilidade = 'provavel')::int AS processos_provaveis,
+                   (ARRAY_AGG(COALESCE(faixa_probabilidade, 'frio')
+                      ORDER BY COALESCE(score_total, 0) DESC))[1] AS faixa_dominante,
+                   MAX(data_distribuicao)::text AS ultima_distribuicao
+            FROM filtrados
+            WHERE geometry IS NOT NULL
+            GROUP BY municipio, geometry
+            ORDER BY maior_score DESC, total_processos DESC, municipio
+            LIMIT :limit_cidades
+        """, params)
+        count_params = {key: value for key, value in params.items() if key != "limit_cidades"}
+        totals = self.query(f"""
+            SELECT COUNT(*) FILTER (WHERE m.geometry IS NOT NULL)::int AS total_processos,
+                   COUNT(DISTINCT p.municipio)
+                       FILTER (WHERE m.geometry IS NOT NULL)::int AS total_municipios,
+                   COUNT(*) FILTER (WHERE m.geometry IS NULL)::int AS sem_localizacao
+            FROM processos p
+            LEFT JOIN score_pericial s ON s.processo_id = p.id
+            LEFT JOIN municipios_mt m ON lower(m.nome) = lower(p.municipio)
+            {where}
+        """, count_params).iloc[0]
+        return {
+            "total_processos": int(totals["total_processos"]),
+            "total_municipios": int(totals["total_municipios"]),
+            "sem_localizacao": int(totals["sem_localizacao"]),
+            "items": items.fillna("").to_dict(orient="records"),
+        }
+
     def query(self, sql: str, params: dict = None) -> pd.DataFrame:
         with self.engine.connect() as conn:
             return pd.read_sql_query(text(sql), conn, params=params or {})

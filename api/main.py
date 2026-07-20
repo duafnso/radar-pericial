@@ -787,6 +787,32 @@ async def processos_mapa(
         logger.error(f"processos_mapa: {e}")
         return {"total": 0, "items": []}
 
+@app.get("/api/processos/mapa/resumo")
+async def processos_mapa_resumo(
+    regiao: Optional[str] = Query(None),
+    municipio: Optional[str] = Query(None),
+    faixa: Optional[str] = Query(None),
+    data_inicio: Optional[str] = Query(None),
+    data_fim: Optional[str] = Query(None),
+    limit_cidades: int = Query(200, ge=1, le=200),
+    _user: AuthUser = None,
+):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        filtros = {
+            "regiao": regiao,
+            "municipio": municipio,
+            "faixa": faixa,
+            "data_inicio": data_inicio,
+            "data_fim": data_fim,
+        }
+        return _db.resumo_mapa_processos(filtros, limit_cidades)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"processos_mapa_resumo: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao resumir mapa de processos")
 
 @app.post("/api/processos/{processo_id}/acompanhar")
 async def acompanhar_processo(processo_id: int, request: Request, _user: AuthUser):

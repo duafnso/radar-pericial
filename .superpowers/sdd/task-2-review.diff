@@ -1,0 +1,258 @@
+# Review package: 15256f305900aa78e74bb526ae8bd87cafb17855..1db0db1
+
+## Commits
+1db0db1 build: bundle leaflet for territorial map
+
+## Files changed
+ frontend/src/map/model.ts         | 24 ++++++++++++++++++++++++
+ frontend/src/types.ts             | 27 +++++++++++++++++++++++++++
+ frontend/tests/map-model.test.mjs | 37 +++++++++++++++++++++++++++++++++++++
+ package-lock.json                 | 28 +++++++++++++++++++++++++++-
+ package.json                      | 13 ++++++++-----
+ 5 files changed, 123 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/frontend/src/map/model.ts b/frontend/src/map/model.ts
+new file mode 100644
+index 0000000..3688463
+--- /dev/null
++++ b/frontend/src/map/model.ts
+@@ -0,0 +1,24 @@
++import type { MapFilters } from "../types";
++
++export function buildMapSummaryParams(
++  filters: MapFilters,
++  globalRegion: string,
++): URLSearchParams {
++  const params = new URLSearchParams({ limit_cidades: "200" });
++  const region = globalRegion || filters.regiao;
++
++  if (region) params.set("regiao", region);
++  if (filters.municipio.trim()) params.set("municipio", filters.municipio.trim());
++  if (filters.faixa) params.set("faixa", filters.faixa);
++  if (filters.dataInicio) params.set("data_inicio", filters.dataInicio);
++  if (filters.dataFim) params.set("data_fim", filters.dataFim);
++
++  return params;
++}
++
++export function markerTone(faixa: string): "critical" | "high" | "medium" | "low" {
++  if (faixa === "janela_quente") return "critical";
++  if (faixa === "provavel") return "high";
++  if (faixa === "observacao") return "medium";
++  return "low";
++}
+diff --git a/frontend/src/types.ts b/frontend/src/types.ts
+index 0206e40..e2299fd 100644
+--- a/frontend/src/types.ts
++++ b/frontend/src/types.ts
+@@ -29,10 +29,37 @@ export type NavItem = {
+   icon: LucideIcon;
+   permission?: string;
+ };
+ 
+ export type ApiClient = {
+   request<T>(path: string, options?: RequestInit): Promise<T | null>;
+   get<T>(path: string): Promise<T | null>;
+   post<T>(path: string, body?: unknown): Promise<T | null>;
+   patch<T>(path: string, body?: unknown): Promise<T | null>;
+ };
++export type MapFilters = {
++  regiao: string;
++  municipio: string;
++  faixa: string;
++  dataInicio: string;
++  dataFim: string;
++};
++
++export type MapCitySummary = {
++  municipio: string;
++  regiao_imea: string;
++  lat: number;
++  lng: number;
++  total_processos: number;
++  maior_score: number;
++  processos_quentes: number;
++  processos_provaveis: number;
++  faixa_dominante: string;
++  ultima_distribuicao: string;
++};
++
++export type MapSummaryResponse = {
++  total_processos: number;
++  total_municipios: number;
++  sem_localizacao: number;
++  items: MapCitySummary[];
++};
+diff --git a/frontend/tests/map-model.test.mjs b/frontend/tests/map-model.test.mjs
+new file mode 100644
+index 0000000..8b4031c
+--- /dev/null
++++ b/frontend/tests/map-model.test.mjs
+@@ -0,0 +1,37 @@
++import assert from "node:assert/strict";
++import { existsSync } from "node:fs";
++import test from "node:test";
++
++const modelUrl = new URL("../src/map/model.ts", import.meta.url);
++
++test("map model module exists", () => {
++  assert.equal(existsSync(modelUrl), true);
++});
++
++if (existsSync(modelUrl)) {
++  const { buildMapSummaryParams, markerTone } = await import(modelUrl.href);
++
++  test("builds map query from local and global filters", () => {
++    const params = buildMapSummaryParams({
++      regiao: "",
++      municipio: "Cuiab\u00e1",
++      faixa: "janela_quente",
++      dataInicio: "2026-01-01",
++      dataFim: "",
++    }, "Centro-Sul");
++
++    assert.equal(params.get("regiao"), "Centro-Sul");
++    assert.equal(params.get("municipio"), "Cuiab\u00e1");
++    assert.equal(params.get("faixa"), "janela_quente");
++    assert.equal(params.get("data_inicio"), "2026-01-01");
++    assert.equal(params.get("data_fim"), null);
++    assert.equal(params.get("limit_cidades"), "200");
++  });
++
++  test("maps probability bands to stable marker tones", () => {
++    assert.equal(markerTone("janela_quente"), "critical");
++    assert.equal(markerTone("provavel"), "high");
++    assert.equal(markerTone("observacao"), "medium");
++    assert.equal(markerTone("frio"), "low");
++  });
++}
+diff --git a/package-lock.json b/package-lock.json
+index 2c8fae9..0445126 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,25 +1,28 @@
+ {
+   "name": "radar-pericial",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "dependencies": {
+         "@vitejs/plugin-react": "^5.0.0",
++        "leaflet": "1.9.4",
+         "lucide-react": "^0.468.0",
+         "react": "^19.0.0",
+         "react-dom": "^19.0.0",
+         "typescript": "^5.7.2",
+         "vite": "^6.0.1"
+       },
+-      "devDependencies": {}
++      "devDependencies": {
++        "@types/leaflet": "1.9.21"
++      }
+     },
+     "node_modules/@babel/code-frame": {
+       "version": "7.29.7",
+       "resolved": "https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.29.7.tgz",
+       "integrity": "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw==",
+       "license": "MIT",
+       "dependencies": {
+         "@babel/helper-validator-identifier": "^7.29.7",
+         "js-tokens": "^4.0.0",
+         "picocolors": "^1.1.1"
+@@ -1109,20 +1112,37 @@
+       "dependencies": {
+         "@babel/types": "^7.28.2"
+       }
+     },
+     "node_modules/@types/estree": {
+       "version": "1.0.9",
+       "resolved": "https://registry.npmjs.org/@types/estree/-/estree-1.0.9.tgz",
+       "integrity": "sha512-GhdPgy1el4/ImP05X05Uw4cw2/M93BCUmnEvWZNStlCzEKME4Fkk+YpoA5OiHNQmoS7Cafb8Xa3Pya8m1Qrzeg==",
+       "license": "MIT"
+     },
++    "node_modules/@types/geojson": {
++      "version": "7946.0.16",
++      "resolved": "https://registry.npmjs.org/@types/geojson/-/geojson-7946.0.16.tgz",
++      "integrity": "sha512-6C8nqWur3j98U6+lXDfTUWIfgvZU+EumvpHKcYjujKH7woYyLj2sUmff0tRhrqM7BohUw7Pz3ZB1jj2gW9Fvmg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@types/leaflet": {
++      "version": "1.9.21",
++      "resolved": "https://registry.npmjs.org/@types/leaflet/-/leaflet-1.9.21.tgz",
++      "integrity": "sha512-TbAd9DaPGSnzp6QvtYngntMZgcRk+igFELwR2N99XZn7RXUdKgsXMR+28bUO0rPsWp8MIu/f47luLIQuSLYv/w==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "@types/geojson": "*"
++      }
++    },
+     "node_modules/@vitejs/plugin-react": {
+       "version": "5.2.0",
+       "resolved": "https://registry.npmjs.org/@vitejs/plugin-react/-/plugin-react-5.2.0.tgz",
+       "integrity": "sha512-YmKkfhOAi3wsB1PhJq5Scj3GXMn3WvtQ/JC0xoopuHoXSdmtdStOpFrYaT1kie2YgFBcIe64ROzMYRjCrYOdYw==",
+       "license": "MIT",
+       "dependencies": {
+         "@babel/core": "^7.29.0",
+         "@babel/plugin-transform-react-jsx-self": "^7.27.1",
+         "@babel/plugin-transform-react-jsx-source": "^7.27.1",
+         "@rolldown/pluginutils": "1.0.0-rc.3",
+@@ -1343,20 +1363,26 @@
+       "resolved": "https://registry.npmjs.org/json5/-/json5-2.2.3.tgz",
+       "integrity": "sha512-XmOWe7eyHYH14cLdVPoyg+GOH3rYX++KpzrylJwSW98t3Nk+U8XOl8FWKOgwtzdb8lXGf6zYwDUzeHMWfxasyg==",
+       "license": "MIT",
+       "bin": {
+         "json5": "lib/cli.js"
+       },
+       "engines": {
+         "node": ">=6"
+       }
+     },
++    "node_modules/leaflet": {
++      "version": "1.9.4",
++      "resolved": "https://registry.npmjs.org/leaflet/-/leaflet-1.9.4.tgz",
++      "integrity": "sha512-nxS1ynzJOmOlHp+iL3FyWqK89GtNL8U8rvlMOsQdTTssxZwCXh8N2NB3GDQOL+YR3XnWyZAxwQixURb+FA74PA==",
++      "license": "BSD-2-Clause"
++    },
+     "node_modules/lru-cache": {
+       "version": "5.1.1",
+       "resolved": "https://registry.npmjs.org/lru-cache/-/lru-cache-5.1.1.tgz",
+       "integrity": "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==",
+       "license": "ISC",
+       "dependencies": {
+         "yallist": "^3.0.2"
+       }
+     },
+     "node_modules/lucide-react": {
+diff --git a/package.json b/package.json
+index b952179..470b26a 100644
+--- a/package.json
++++ b/package.json
+@@ -1,17 +1,20 @@
+ {
+   "scripts": {
+     "frontend:dev": "vite --host 0.0.0.0",
+-    "frontend:test": "node --test frontend/tests/*.test.mjs",
++    "frontend:test": "node --experimental-strip-types --test frontend/tests/*.test.mjs",
+     "frontend:build": "vite build && node frontend/scripts/sync-build.mjs",
+     "frontend:preview": "vite preview --host 0.0.0.0"
+   },
+   "dependencies": {
+     "@vitejs/plugin-react": "^5.0.0",
++    "leaflet": "1.9.4",
+     "lucide-react": "^0.468.0",
+-    "typescript": "^5.7.2",
+-    "vite": "^6.0.1",
+     "react": "^19.0.0",
+-    "react-dom": "^19.0.0"
++    "react-dom": "^19.0.0",
++    "typescript": "^5.7.2",
++    "vite": "^6.0.1"
+   },
+-  "devDependencies": {}
++  "devDependencies": {
++    "@types/leaflet": "1.9.21"
++  }
+ }

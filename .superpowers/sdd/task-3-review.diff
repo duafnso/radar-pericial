@@ -1,0 +1,250 @@
+# Review package: 1db0db1..fe97c15
+
+## Commits
+fe97c15 refactor: share process details modal
+
+## Files changed
+ frontend/src/components/ProcessModal.tsx       | 58 ++++++++++++++++++++++++
+ frontend/src/main.tsx                          |  9 +++-
+ frontend/src/screens/Processos.tsx             | 63 ++------------------------
+ frontend/tests/process-modal-contract.test.mjs | 17 +++++++
+ 4 files changed, 86 insertions(+), 61 deletions(-)
+
+## Diff
+diff --git a/frontend/src/components/ProcessModal.tsx b/frontend/src/components/ProcessModal.tsx
+new file mode 100644
+index 0000000..ee2faa5
+--- /dev/null
++++ b/frontend/src/components/ProcessModal.tsx
+@@ -0,0 +1,58 @@
++import { BellPlus, X } from "lucide-react";
++import type { Processo } from "../types";
++import { scoreLabel, shortDate } from "../utils/format";
++
++export function ProcessModal({ processo, close, follow }: {
++  processo: Processo;
++  close: () => void;
++  follow: (processo: Processo) => void;
++}) {
++  const rows = [
++    ["Número CNJ", processo.numero_cnj],
++    ["Tribunal", processo.tribunal],
++    ["Comarca", processo.comarca],
++    ["Vara", processo.vara],
++    ["Município", processo.municipio],
++    ["Região IMEA", processo.regiao_imea],
++    ["Classe", processo.classe_processual],
++    ["Assunto", processo.assunto_principal],
++    ["Fase atual", processo.fase_atual],
++    ["Distribuição", shortDate(processo.data_distribuicao)],
++    ["Tipo de perícia sugerida", processo.tipo_pericia_sugerida],
++    ["Urgência", processo.urgencia],
++    ["Faixa", scoreLabel(processo.faixa_probabilidade)]
++  ];
++
++  return (
++    <div className="modal-backdrop" role="presentation" onClick={close}>
++      <section className="modal-panel" role="dialog" aria-modal="true" aria-labelledby="process-modal-title" onClick={(event) => event.stopPropagation()}>
++        <header className="modal-header">
++          <div>
++            <strong id="process-modal-title">{processo.numero_cnj || "Processo sem CNJ"}</strong>
++            <span>{processo.classe_processual || "Classe não informada"}</span>
++          </div>
++          <button className="secondary icon-button" onClick={close} aria-label="Fechar"><X size={16} /></button>
++        </header>
++        <div className="detail-grid">
++          {rows.map(([label, value]) => (
++            <div key={label}>
++              <span>{label}</span>
++              <strong>{value || "--"}</strong>
++            </div>
++          ))}
++        </div>
++        <div className="modal-score">
++          <div>
++            <span>Score pericial</span>
++            <strong>{processo.score_total || 0}</strong>
++          </div>
++          <p>{processo.categorias_detectadas || "Sem categorias adicionais detectadas."}</p>
++        </div>
++        <footer className="modal-actions">
++          <button className="secondary" onClick={close}>Fechar</button>
++          <button className="primary" onClick={() => follow(processo)}><BellPlus size={14} /> Acompanhar processo</button>
++        </footer>
++      </section>
++    </div>
++  );
++}
+diff --git a/frontend/src/main.tsx b/frontend/src/main.tsx
+index bf7614b..8f3fd01 100644
+--- a/frontend/src/main.tsx
++++ b/frontend/src/main.tsx
+@@ -9,20 +9,27 @@ import { Coletas } from "./screens/Coletas";
+ import { Dashboard } from "./screens/Dashboard";
+ import { Login } from "./screens/Login";
+ import { MapScreen } from "./screens/MapScreen";
+ import { Processos } from "./screens/Processos";
+ import { ScoreCalculator } from "./screens/ScoreCalculator";
+ import { Usuarios } from "./screens/Usuarios";
+ import { useLocalState } from "./hooks/useLocalState";
+ import type { ApiUser, Screen } from "./types";
+ import "./styles.css";
+ 
++type MapScreenProps = React.ComponentProps<typeof MapScreen> & {
++  navigate: (screen: Screen) => void;
++  notify: (message: string) => void;
++};
++
++const MapScreenWithFutureProps = MapScreen as React.ComponentType<MapScreenProps>;
++
+ function App() {
+   const [token, setToken] = useLocalState<string | null>("radar_token", null);
+   const [user, setUser] = useLocalState<ApiUser | null>("radar_user", null);
+   const [screen, setScreen] = React.useState<Screen>("dashboard");
+   const [toast, setToast] = React.useState("");
+   const [region, setRegion] = useLocalState<string>("radar_region", "");
+   const api = useApiClient(token, setToken, setUser);
+ 
+   const hasPermission = React.useCallback((permission?: string) => {
+     if (!permission) return true;
+@@ -65,21 +72,21 @@ function App() {
+         region={region}
+         setRegion={setRegion}
+         hasPermission={hasPermission}
+         logout={() => {
+           setToken(null);
+           setUser(null);
+         }}
+       />
+       <main className="workspace">
+         {screen === "dashboard" && <Dashboard api={api} region={region} navigate={navigate} hasPermission={hasPermission} />}
+-        {screen === "mapa" && <MapScreen api={api} region={region} />}
++        {screen === "mapa" && <MapScreenWithFutureProps api={api} region={region} navigate={navigate} notify={notify} />}
+         {screen === "processos" && <Processos api={api} region={region} navigate={navigate} notify={notify} />}
+         {screen === "administrativo" && <Administrativo api={api} />}
+         {screen === "score" && <ScoreCalculator api={api} hasPermission={hasPermission} />}
+         {screen === "alertas" && <Alertas api={api} />}
+         {screen === "coletas" && <Coletas api={api} hasPermission={hasPermission} notify={notify} />}
+         {screen === "usuarios" && <Usuarios api={api} hasPermission={hasPermission} notify={notify} />}
+         {screen === "auditoria" && <Auditoria api={api} />}
+       </main>
+       <div className={`toast ${toast ? "show" : ""}`}>{toast}</div>
+     </div>
+diff --git a/frontend/src/screens/Processos.tsx b/frontend/src/screens/Processos.tsx
+index fa14161..c30258d 100644
+--- a/frontend/src/screens/Processos.tsx
++++ b/frontend/src/screens/Processos.tsx
+@@ -1,18 +1,19 @@
+ import React from "react";
+-import { BellPlus, Download, RefreshCw, X } from "lucide-react";
++import { Download, RefreshCw } from "lucide-react";
+ import { Empty, ErrorState, LoadingState } from "../components/Empty";
+ import { Page } from "../components/Page";
+ import { ProcessCard } from "../components/ProcessCard";
++import { ProcessModal } from "../components/ProcessModal";
+ import type { ApiClient, Processo, Screen } from "../types";
+ import { downloadCsv } from "../utils/export";
+-import { fmt, scoreLabel, shortDate } from "../utils/format";
++import { fmt } from "../utils/format";
+ 
+ type Filters = {
+   faixa: string;
+   regiao: string;
+   municipio: string;
+   classe: string;
+   dataInicio: string;
+   dataFim: string;
+ };
+ 
+@@ -202,68 +203,10 @@ function FilterBar({ filters, setFilters }: {
+         <span>De</span>
+         <input type="date" value={filters.dataInicio} onChange={(event) => setFilters({ ...filters, dataInicio: event.target.value })} />
+       </label>
+       <label className="field-compact">
+         <span>Até</span>
+         <input type="date" value={filters.dataFim} onChange={(event) => setFilters({ ...filters, dataFim: event.target.value })} />
+       </label>
+     </div>
+   );
+ }
+-
+-function ProcessModal({ processo, close, follow }: {
+-  processo: Processo;
+-  close: () => void;
+-  follow: (processo: Processo) => void;
+-}) {
+-  const rows = [
+-    ["Número CNJ", processo.numero_cnj],
+-    ["Tribunal", processo.tribunal],
+-    ["Comarca", processo.comarca],
+-    ["Vara", processo.vara],
+-    ["Município", processo.municipio],
+-    ["Região IMEA", processo.regiao_imea],
+-    ["Classe", processo.classe_processual],
+-    ["Assunto", processo.assunto_principal],
+-    ["Fase atual", processo.fase_atual],
+-    ["Distribuição", shortDate(processo.data_distribuicao)],
+-    ["Tipo de perícia sugerida", processo.tipo_pericia_sugerida],
+-    ["Urgência", processo.urgencia],
+-    ["Faixa", scoreLabel(processo.faixa_probabilidade)]
+-  ];
+-
+-  return (
+-    <div className="modal-backdrop" role="presentation" onClick={close}>
+-      <section className="modal-panel" role="dialog" aria-modal="true" onClick={(event) => event.stopPropagation()}>
+-        <header className="modal-header">
+-          <div>
+-            <strong>{processo.numero_cnj || "Processo sem CNJ"}</strong>
+-            <span>{processo.classe_processual || "Classe não informada"}</span>
+-          </div>
+-          <button className="secondary icon-button" onClick={close} aria-label="Fechar"><X size={16} /></button>
+-        </header>
+-        <div className="detail-grid">
+-          {rows.map(([label, value]) => (
+-            <div key={label}>
+-              <span>{label}</span>
+-              <strong>{value || "--"}</strong>
+-            </div>
+-          ))}
+-        </div>
+-        <div className="modal-score">
+-          <div>
+-            <span>Score pericial</span>
+-            <strong>{processo.score_total || 0}</strong>
+-          </div>
+-          <p>{processo.categorias_detectadas || "Sem categorias adicionais detectadas."}</p>
+-        </div>
+-        <footer className="modal-actions">
+-          <button className="secondary" onClick={close}>Fechar</button>
+-          <button className="primary" onClick={() => follow(processo)}><BellPlus size={14} /> Acompanhar processo</button>
+-        </footer>
+-      </section>
+-    </div>
+-  );
+-}
+-
+-
+-
+diff --git a/frontend/tests/process-modal-contract.test.mjs b/frontend/tests/process-modal-contract.test.mjs
+new file mode 100644
+index 0000000..dd3e20d
+--- /dev/null
++++ b/frontend/tests/process-modal-contract.test.mjs
+@@ -0,0 +1,17 @@
++import assert from "node:assert/strict";
++import { existsSync } from "node:fs";
++import { readFile } from "node:fs/promises";
++import test from "node:test";
++
++const modalUrl = new URL("../src/components/ProcessModal.tsx", import.meta.url);
++
++test("process modal exists and is shared by radar", async () => {
++  assert.equal(existsSync(modalUrl), true);
++  const modal = await readFile(modalUrl, "utf8");
++  const radar = await readFile(
++    new URL("../src/screens/Processos.tsx", import.meta.url),
++    "utf8",
++  );
++  assert.match(modal, /export function ProcessModal/);
++  assert.match(radar, /import \{ ProcessModal \}/);
++});

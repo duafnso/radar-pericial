@@ -1,0 +1,98 @@
+{
+  "desktopMetrics": {
+    "markerCount": 54,
+    "markerSizes": [
+      {
+        "width": 26,
+        "height": 26
+      },
+      {
+        "width": 26,
+        "height": 26
+      },
+      {
+        "width": 26,
+        "height": 26
+      },
+      {
+        "width": 26,
+        "height": 26
+      },
+      {
+        "width": 26,
+        "height": 26
+      },
+      {
+        "width": 26,
+        "height": 26
+      },
+      {
+        "width": 26,
+        "height": 26
+      },
+      {
+        "width": 26,
+        "height": 26
+      },
+      {
+        "width": 26,
+        "height": 26
+      },
+      {
+        "width": 26,
+        "height": 26
+      }
+    ],
+    "markerLabels": [
+      "Rondonópolis, 17 processos, faixa Frio",
+      "Cuiabá, 8 processos, faixa Frio",
+      "Várzea Grande, 5 processos, faixa Frio"
+    ],
+    "map": {
+      "width": 746,
+      "height": 630
+    },
+    "panel": {
+      "width": 360,
+      "height": 630
+    },
+    "polygons": 54,
+    "tileImages": 12
+  },
+  "selectedMetrics": {
+    "selectedMarkers": 1,
+    "processRows": 10,
+    "panelLabel": "Processos de Rondonópolis",
+    "horizontalOverflow": false
+  },
+  "responsive": [
+    {
+      "width": 1024,
+      "horizontalOverflow": false,
+      "mapRect": {
+        "width": 690,
+        "height": 480
+      },
+      "panelRect": {
+        "width": 690,
+        "height": 1460
+      }
+    },
+    {
+      "width": 390,
+      "horizontalOverflow": false,
+      "mapRect": {
+        "width": 352,
+        "height": 489.515625
+      },
+      "panelRect": {
+        "width": 352,
+        "height": 1680
+      }
+    }
+  ],
+  "consoleErrors": [
+    "Failed to load resource: the server responded with a status of 404 (Not Found)"
+  ],
+  "pageErrors": []
+}

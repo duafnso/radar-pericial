@@ -36,3 +36,30 @@ export type ApiClient = {
   post<T>(path: string, body?: unknown): Promise<T | null>;
   patch<T>(path: string, body?: unknown): Promise<T | null>;
 };
+export type MapFilters = {
+  regiao: string;
+  municipio: string;
+  faixa: string;
+  dataInicio: string;
+  dataFim: string;
+};
+
+export type MapCitySummary = {
+  municipio: string;
+  regiao_imea: string;
+  lat: number;
+  lng: number;
+  total_processos: number;
+  maior_score: number;
+  processos_quentes: number;
+  processos_provaveis: number;
+  faixa_dominante: string;
+  ultima_distribuicao: string;
+};
+
+export type MapSummaryResponse = {
+  total_processos: number;
+  total_municipios: number;
+  sem_localizacao: number;
+  items: MapCitySummary[];
+};

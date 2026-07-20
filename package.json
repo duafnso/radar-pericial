@@ -1,17 +1,20 @@
 {
   "scripts": {
     "frontend:dev": "vite --host 0.0.0.0",
-    "frontend:test": "node --test frontend/tests/*.test.mjs",
+    "frontend:test": "node --experimental-strip-types --test frontend/tests/*.test.mjs",
     "frontend:build": "vite build && node frontend/scripts/sync-build.mjs",
     "frontend:preview": "vite preview --host 0.0.0.0"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",
+    "leaflet": "1.9.4",
     "lucide-react": "^0.468.0",
-    "typescript": "^5.7.2",
-    "vite": "^6.0.1",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.1"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@types/leaflet": "1.9.21"
+  }
 }

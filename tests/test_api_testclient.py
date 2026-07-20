@@ -1,4 +1,4 @@
-﻿import sys
+import sys
 from types import SimpleNamespace
 
 import pandas as pd
@@ -73,6 +73,16 @@ class FakeDb:
             "processos_provaveis": 0,
         }
 
+    def auditoria_qualidade_processos(self):
+        return {
+            "total_processos": 1,
+            "score_qualidade": 96,
+            "total_problemas": 1,
+            "problemas": [
+                {"codigo": "sem_score", "rotulo": "Processos sem score", "total": 1, "severidade": "alta"}
+            ],
+            "recomendacoes": ["Reexecutar score quando houver processos sem score."],
+        }
     def listar_execucoes_coleta(self, limit=50):
         return pd.DataFrame(
             [
@@ -409,6 +419,31 @@ def test_coletas_metricas_returns_diagnostics_for_operator(api_client):
     assert payload["items"][0]["chave"] == "desapropriacao"
     assert payload["items"][0]["duplicados"] == 1
 
+
+def test_qualidade_processos_requires_operational_permission(api_client):
+    client, _ = api_client
+
+    response = client.get(
+        "/api/qualidade/processos",
+        headers=auth_header("token-user"),
+    )
+
+    assert response.status_code == 403
+
+
+
+def test_qualidade_processos_returns_audit_for_operator(api_client):
+    client, _ = api_client
+
+    response = client.get(
+        "/api/qualidade/processos",
+        headers=auth_header("token-operator"),
+    )
+
+    payload = response.json()
+    assert response.status_code == 200
+    assert payload["score_qualidade"] == 96
+    assert payload["problemas"][0]["codigo"] == "sem_score"
 
 def test_manual_collection_enqueue_is_mocked(api_client, monkeypatch):
     client, fake_db = api_client

@@ -1085,6 +1085,18 @@ async def coletas_metricas(
         raise HTTPException(status_code=500, detail="Erro ao consultar metricas das coletas")
 
 
+@app.get("/api/qualidade/processos")
+async def qualidade_processos(_user: ReadOperationalUser = None):
+    try:
+        if not _db:
+            raise HTTPException(status_code=503, detail="Banco nao inicializado")
+        return _db.auditoria_qualidade_processos()
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"qualidade_processos: {e}")
+        raise HTTPException(status_code=500, detail="Erro ao auditar qualidade dos processos")
+
 @app.post("/api/coletas/{tipo}/executar")
 async def executar_coleta(tipo: str, request: Request, _admin: RunCollectionsUser):
     try:

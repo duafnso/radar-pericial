@@ -32,6 +32,7 @@ Build frontend:
 
 ```bash
 npm ci
+npm run frontend:test
 npm run frontend:build
 ```
 
@@ -70,6 +71,7 @@ O workflow `.github/workflows/ci.yml` executa:
 
 - `py_compile`;
 - `pytest`;
+- `npm run frontend:test`;
 - `npm run frontend:build`;
 - teste de integracao PostgreSQL/PostGIS;
 - docker build;

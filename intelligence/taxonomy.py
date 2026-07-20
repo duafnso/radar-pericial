@@ -228,6 +228,7 @@ class ScorePericial:
     faixa_label: str = "❄️ Frio"
     tipo_pericia_sugerida: str = ""
     categorias_detectadas: list = field(default_factory=list)
+    explicacao_score: str = ""
     urgencia: str = "baixa"
 
     def to_dict(self) -> dict:
@@ -242,6 +243,7 @@ class ScorePericial:
             "faixa_label":           self.faixa_label,
             "tipo_pericia_sugerida": self.tipo_pericia_sugerida,
             "categorias_detectadas": ",".join(self.categorias_detectadas),
+            "explicacao_score":      self.explicacao_score,
             "urgencia":              self.urgencia,
         }
 
@@ -329,6 +331,19 @@ def calcular_score(
         r.tipo_pericia_sugerida = TAXONOMIA.get(r.categorias_detectadas[0], {}).get("label", "")
 
     r.urgencia = "alta" if r.score_total >= 75 else "media" if r.score_total >= 50 else "baixa"
+    componentes = [
+        ("Classe processual" if classe_processual else "Pontuação-base da classe", r.score_classe),
+        ("Assunto" if assunto else "Pontuação-base do assunto", r.score_assunto),
+        ("Movimentação", r.score_movimentacao),
+        ("Publicação", r.score_publicacao),
+        ("Evento administrativo", r.score_administrativo),
+    ]
+    sinais = [f"{rotulo}: {pontos} pontos" for rotulo, pontos in componentes if pontos > 0]
+    r.explicacao_score = (
+        "; ".join(sinais) + "."
+        if sinais
+        else "Nenhum sinal pericial relevante detectado."
+    )
     return r
 
 

@@ -1,4 +1,4 @@
-﻿name: CI
+name: CI
 
 on:
   push:
@@ -124,6 +124,9 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Test frontend contracts
+        run: npm run frontend:test
+
       - name: Build frontend
         run: npm run frontend:build
 
@@ -159,6 +162,7 @@ jobs:
       - name: Run smoke test
         env:
           RADAR_SMOKE_USER: ${{ secrets.RADAR_SMOKE_USER }}
+          RADAR_SMOKE_USERNAME: ${{ secrets.RADAR_SMOKE_USER }}
           RADAR_SMOKE_PASSWORD: ${{ secrets.RADAR_SMOKE_PASSWORD }}
         run: python tools/smoke_test.py --base-url "${{ inputs.smoke_base_url }}"
 

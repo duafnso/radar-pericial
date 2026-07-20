@@ -337,3 +337,26 @@ def test_init_schema_does_not_reset_admin_password_by_default(monkeypatch):
     admin_sql = conn.executed[2][0]
     assert "ON CONFLICT (username) DO NOTHING" in admin_sql
     assert "DO UPDATE" not in admin_sql
+
+
+def test_auditoria_qualidade_processos_calculates_summary(monkeypatch):
+    from database.db import Database
+
+    db = object.__new__(Database)
+    values = iter([10, 1, 2, 0, 3, 1, 1, 0, 4])
+    captured_sql = []
+
+    def fake_query(sql, params=None):
+        captured_sql.append(sql)
+        return pd.DataFrame([[next(values)]])
+
+    monkeypatch.setattr(db, "query", fake_query)
+
+    result = db.auditoria_qualidade_processos()
+
+    assert result["total_processos"] == 10
+    assert result["score_qualidade"] == 73
+    assert result["total_problemas"] == 12
+    assert result["problemas"][0]["codigo"] == "sem_cnj"
+    assert result["problemas"][4]["codigo"] == "sem_score"
+    assert any("municipios_mt" in sql for sql in captured_sql)

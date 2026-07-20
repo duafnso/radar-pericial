@@ -1,6 +1,6 @@
 # Pendencias de Producao
 
-Estado revisado em 2026-07-13.
+Estado revisado em 2026-07-19.
 
 ## Concluido nesta fase
 
@@ -16,6 +16,7 @@ Estado revisado em 2026-07-13.
   - `/api/processos`;
   - `/api/coletas/status`;
   - `/api/coletas/resumo`;
+  - `/api/qualidade/processos`;
   - HTML e assets do frontend.
 - Suite automatizada validada no container.
 - Producao falha no startup se faltarem segredos fortes:
@@ -38,6 +39,15 @@ Estado revisado em 2026-07-13.
   - descartados sem CNJ;
   - duplicados;
   - erro resumido.
+- Auditoria tecnica de qualidade dos processos implementada em base local:
+  - endpoint `/api/qualidade/processos`;
+  - verificacao de CNJ, municipio, comarca, mapeamento municipal, score e datas;
+  - teste de API e teste unitario de banco;
+  - validacao real com 729 processos;
+  - indice de qualidade elevado de 81 para 92 apos persistir explicacoes dos scores e normalizar municipios.
+- Dashboard React passou a exibir qualidade dos dados, problemas ativos e recomendacao operacional.
+- Explicacao auditavel do score adicionada ao motor, banco e recalculo dos 729 processos.
+- Migracoes `0005_judicial_intelligence`, `0006_score_explanation` e `0007_normalize_process_municipalities` aplicadas e validadas no PostGIS local.
 - Politica tecnica de retencao operacional implementada por task agendada:
   - `auditoria_eventos`;
   - `execucoes_coleta`;
@@ -62,6 +72,9 @@ Estado revisado em 2026-07-13.
 - Base de migracoes SQL versionadas criada em `database/migrations`.
 - Script `tools/apply_migrations.py` criado com controle em `schema_migrations`.
 - Documentacao de GitHub, CI/CD, migracoes e testes criada/atualizada.
+- Scripts de backup/restore criados em `tools/backup_db.py` e `tools/restore_db.py`.
+- Checklist de homologacao/producao criado em `docs/CHECKLIST_HOMOLOGACAO_PRODUCAO.md`.
+- Matriz inicial de compliance de fontes criada em `docs/COMPLIANCE_FONTES_DADOS.md`.
 
 ## Plano de evolucao local antes do lancamento
 
@@ -87,11 +100,11 @@ Antes de iniciar hospedagem publica e venda comercial, seguir o roadmap em docs/
 - Executar e documentar o primeiro ciclo real de rotacao de `SECRET_KEY` e `SESSION_TOKEN_PEPPER` em homologacao.
 - Revisar tempo de expiracao de sessoes para o modelo comercial.
 - Validar rate limit com Redis no ambiente real de homologacao.
-- Definir rotina operacional para backup/restore antes de migracoes.
+- Rotina operacional de backup/restore documentada e scripts locais criados; ainda falta testar restore em homologacao real.
 
 ### 3. Banco e migracoes
 
-- Continuar migrando alteracoes incrementais de `database/db.py` para arquivos em `database/migrations`.
+- Continuar migrando apenas o schema geoespacial e tabelas de referencia restantes de `database/db.py`; o nucleo judicial, score, usuarios, auditoria e coletas ja esta versionado.
 - Testar restore em ambiente local/homologacao.
 - Avaliar Alembic somente se o volume de migracoes, ambientes ou branches tornar o SQL versionado simples custoso.
 
@@ -106,11 +119,9 @@ Antes de iniciar hospedagem publica e venda comercial, seguir o roadmap em docs/
   - `DATAJUD_REQUEST_DELAY_SECONDS`;
   - `DATAJUD_INCREMENTAL_OVERLAP_DAYS`.
 - Monitorar `429 Too Many Requests` e reduzir agressividade se a API limitar chamadas.
-- Criar rotina de auditoria de qualidade dos processos:
-  - CNJ ausente;
-  - municipio ausente;
-  - comarca nao mapeada;
-  - score sem explicacao suficiente.
+- Tratar as inconsistencias restantes observadas na auditoria real:
+  - manter 27 processos de segunda instancia sem municipio ate existir fonte confiavel para localizacao;
+  - definir se os 559 registros anteriores a 2026 devem permanecer no acervo historico ou sair do indicador operacional.
 
 ### 5. Produto e frontend
 
@@ -120,7 +131,7 @@ Antes de iniciar hospedagem publica e venda comercial, seguir o roadmap em docs/
 
 ### 6. Compliance comercial
 
-- Criar matriz de fontes de dados com:
+- Matriz inicial de fontes criada em `docs/COMPLIANCE_FONTES_DADOS.md`; ainda falta revisao juridica final com:
   - licenca;
   - permissao de armazenamento;
   - permissao de redistribuicao;

@@ -104,6 +104,7 @@ def run(base_url: str, username: str, password: str) -> None:
         ("processos", "/api/processos?" + urlencode({"limit": 5})),
         ("coletas status", "/api/coletas/status?" + urlencode({"limit": 5})),
         ("coletas resumo", "/api/coletas/resumo"),
+        ("qualidade processos", "/api/qualidade/processos"),
     ]
     for name, path in checks:
         status, payload = _request(base_url, path, token=token)
@@ -113,7 +114,7 @@ def run(base_url: str, username: str, password: str) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(description="Smoke test do Radar Pericial")
     parser.add_argument("--base-url", default=os.getenv("RADAR_BASE_URL", "http://localhost:8000"))
-    parser.add_argument("--username", default=os.getenv("RADAR_SMOKE_USERNAME", "admin"))
+    parser.add_argument("--username", default=os.getenv("RADAR_SMOKE_USERNAME") or os.getenv("RADAR_SMOKE_USER", "admin"))
     parser.add_argument("--password", default=os.getenv("RADAR_SMOKE_PASSWORD"))
     args = parser.parse_args()
 

@@ -307,9 +307,11 @@ class Database:
             faixa_probabilidade TEXT DEFAULT 'frio',
             faixa_label TEXT DEFAULT '❄️ Frio',
             tipo_pericia_sugerida TEXT, categorias_detectadas TEXT,
+            explicacao_score TEXT,
             urgencia TEXT DEFAULT 'baixa',
             calculado_em TIMESTAMPTZ DEFAULT NOW()
         );
+        ALTER TABLE score_pericial ADD COLUMN IF NOT EXISTS explicacao_score TEXT;
         CREATE INDEX IF NOT EXISTS idx_score_proc ON score_pericial(processo_id);
         CREATE INDEX IF NOT EXISTS idx_score_total ON score_pericial(score_total DESC);
         CREATE INDEX IF NOT EXISTS idx_score_faixa ON score_pericial(faixa_probabilidade);
@@ -833,7 +835,7 @@ class Database:
             campos = ["processo_id","score_total","score_classe","score_assunto",
                       "score_movimentacao","score_publicacao","score_administrativo",
                       "faixa_probabilidade","faixa_label","tipo_pericia_sugerida",
-                      "categorias_detectadas","urgencia"]
+                      "categorias_detectadas","explicacao_score","urgencia"]
             vals = {c: score_dict.get(c) for c in campos}
             vals["processo_id"] = processo_id
             conn.execute(
@@ -1468,6 +1470,93 @@ class Database:
             params,
         )
 
+    def auditoria_qualidade_processos(self) -> dict:
+        def scalar(sql: str, params: Optional[dict] = None) -> int:
+            try:
+                value = self.query(sql, params or {}).iloc[0, 0]
+                return int(value or 0)
+            except Exception:
+                return 0
+
+        total = scalar("SELECT COUNT(*) FROM processos")
+        sem_cnj = scalar("""
+            SELECT COUNT(*) FROM processos
+            WHERE numero_cnj IS NULL OR btrim(numero_cnj) = ''
+        """)
+        sem_municipio = scalar("""
+            SELECT COUNT(*) FROM processos
+            WHERE municipio IS NULL OR btrim(municipio) = ''
+        """)
+        sem_comarca = scalar("""
+            SELECT COUNT(*) FROM processos
+            WHERE comarca IS NULL OR btrim(comarca) = ''
+        """)
+        sem_score = scalar("""
+            SELECT COUNT(*)
+            FROM processos p
+            LEFT JOIN score_pericial s ON s.processo_id = p.id
+            WHERE s.processo_id IS NULL
+        """)
+        score_sem_explicacao = scalar("""
+            SELECT COUNT(*)
+            FROM score_pericial
+            WHERE COALESCE(score_total, 0) > 0
+              AND (explicacao_score IS NULL OR btrim(explicacao_score) = '')
+        """)
+        municipio_nao_mapeado = scalar("""
+            SELECT COUNT(*)
+            FROM processos p
+            LEFT JOIN municipios_mt m ON lower(m.nome) = lower(p.municipio)
+            WHERE p.municipio IS NOT NULL
+              AND btrim(p.municipio) <> ''
+              AND m.nome IS NULL
+        """)
+        data_futura = scalar("""
+            SELECT COUNT(*) FROM processos
+            WHERE data_distribuicao > CURRENT_DATE
+        """)
+        data_antiga_ou_ausente = scalar("""
+            SELECT COUNT(*) FROM processos
+            WHERE data_distribuicao IS NULL OR data_distribuicao < DATE '2026-01-01'
+        """)
+
+        problemas = [
+            {"codigo": "sem_cnj", "rotulo": "Processos sem CNJ", "total": sem_cnj, "severidade": "alta"},
+            {"codigo": "sem_municipio", "rotulo": "Processos sem municipio", "total": sem_municipio, "severidade": "media"},
+            {"codigo": "sem_comarca", "rotulo": "Processos sem comarca", "total": sem_comarca, "severidade": "media"},
+            {"codigo": "municipio_nao_mapeado", "rotulo": "Municipios nao mapeados", "total": municipio_nao_mapeado, "severidade": "media"},
+            {"codigo": "sem_score", "rotulo": "Processos sem score", "total": sem_score, "severidade": "alta"},
+            {"codigo": "score_sem_explicacao", "rotulo": "Scores sem explicacao", "total": score_sem_explicacao, "severidade": "media"},
+            {"codigo": "data_futura", "rotulo": "Processos com data futura", "total": data_futura, "severidade": "alta"},
+            {"codigo": "data_antiga_ou_ausente", "rotulo": "Processos sem data ou antes de 2026", "total": data_antiga_ou_ausente, "severidade": "baixa"},
+        ]
+        total_problemas = sum(item["total"] for item in problemas)
+        score_qualidade = 100
+        if total:
+            peso = (
+                sem_cnj * 4
+                + sem_score * 4
+                + data_futura * 4
+                + sem_municipio * 2
+                + sem_comarca * 2
+                + municipio_nao_mapeado * 2
+                + score_sem_explicacao
+                + data_antiga_ou_ausente
+            )
+            score_qualidade = max(0, min(100, round(100 - (peso / max(total, 1) * 10))))
+
+        return {
+            "total_processos": total,
+            "score_qualidade": score_qualidade,
+            "total_problemas": total_problemas,
+            "problemas": problemas,
+            "recomendacoes": [
+                "Reexecutar score quando houver processos sem score.",
+                "Revisar normalizacao de municipios quando houver municipio nao mapeado.",
+                "Auditar amostras de CNJ quando houver processos sem identificador.",
+                "Manter DATAJUD_START_DATE=2026-01-01 para backfill inicial e depois ativar incremental.",
+            ],
+        }
     def resumo_execucoes_coleta(self) -> pd.DataFrame:
         return self.query(
             """

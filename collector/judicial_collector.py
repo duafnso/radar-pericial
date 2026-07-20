@@ -272,10 +272,16 @@ def _normaliza_datajud(src: dict) -> Optional[dict]:
             return [v.strip()]
         return []
 
+    def _normalize_municipio(value: str) -> str:
+        normalized = value.strip()
+        for apostrophe in ("´", "`", "’", "‘"):
+            normalized = normalized.replace(apostrophe, "'")
+        return normalized
+
     def _municipio_from_orgao(orgao_nome: str) -> str:
         if not orgao_nome:
             return ""
-        m = re.search(r"Comarca de\s+([^-\n\r]+)", orgao_nome, flags=re.IGNORECASE)
+        m = re.search(r"Comarca(?:\s+de)?\s+([^-\n\r]+)", orgao_nome, flags=re.IGNORECASE)
         if not m:
             return ""
         return m.group(1).strip()
@@ -292,6 +298,7 @@ def _normaliza_datajud(src: dict) -> Optional[dict]:
     orgao = _as_text(src.get("orgaoJulgador"))
     if not municipio:
         municipio = _municipio_from_orgao(orgao)
+    municipio = _normalize_municipio(municipio)
 
     score = calcular_score(
         classe_processual=classe, assunto=assunto, movimentacoes=movimentos,

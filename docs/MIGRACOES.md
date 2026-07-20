@@ -8,6 +8,17 @@ O schema historico ainda e inicializado por `database/db.py`.
 
 As migracoes SQL foram introduzidas como caminho de transicao para tirar alteracoes incrementais do startup da aplicacao, sem quebrar o ambiente atual.
 
+O nucleo operacional ja esta versionado ate `0007`:
+
+- coletas e metricas;
+- usuarios, sessoes e auditoria;
+- processos acompanhados e alertas;
+- movimentacoes, publicacoes, eventos administrativos, score, portarias e data lake;
+- explicacao auditavel do score;
+- normalizacao controlada de municipios observados no DataJud.
+
+O schema geoespacial e as tabelas de referencia ainda permanecem parcialmente no bootstrap legado.
+
 ## Como aplicar
 
 Com as variaveis `DATABASE_URL` ou `PG*` apontando para o banco correto:

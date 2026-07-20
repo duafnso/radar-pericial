@@ -1,6 +1,7 @@
 {
   "scripts": {
     "frontend:dev": "vite --host 0.0.0.0",
+    "frontend:test": "node --test frontend/tests/*.test.mjs",
     "frontend:build": "vite build && node frontend/scripts/sync-build.mjs",
     "frontend:preview": "vite preview --host 0.0.0.0"
   },

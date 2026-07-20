@@ -135,6 +135,7 @@ Use:
 - `/health/ready` para readiness com banco, Redis e Celery.
 - `/api/health` apenas para validar sessao autenticada.
 - `/api/coletas/resumo` para validar a saude operacional das coletas.
+- `/api/qualidade/processos` para validar a qualidade tecnica dos dados coletados.
 
 O healthcheck do container `web` usa `/health`, porque `/api/health` exige
 token.
@@ -157,6 +158,7 @@ curl -H "Authorization: Bearer <token>" http://localhost:8000/api/stats
 curl -H "Authorization: Bearer <token>" "http://localhost:8000/api/processos?limit=5"
 curl -H "Authorization: Bearer <token>" "http://localhost:8000/api/coletas/status?limit=5"
 curl -H "Authorization: Bearer <token>" http://localhost:8000/api/coletas/resumo
+curl -H "Authorization: Bearer <token>" http://localhost:8000/api/qualidade/processos
 ```
 
 O endpoint `/api/coletas/resumo` deve retornar um resumo por fonte com ultimo
@@ -166,14 +168,36 @@ em execucao.
 Tambem existe um smoke test automatizado:
 
 ```bash
-RADAR_SMOKE_PASSWORD='senha-admin' python tools/smoke_test.py --base-url http://localhost:8000
+RADAR_SMOKE_USER='admin' RADAR_SMOKE_PASSWORD='senha-admin' python tools/smoke_test.py --base-url http://localhost:8000
 ```
 
+O usuario pode ser informado por `RADAR_SMOKE_USER` ou `RADAR_SMOKE_USERNAME`.
+
 Ele valida health, readiness, HTML do frontend, asset estatico, login,
-`/api/me`, `/api/stats`, `/api/processos`, `/api/coletas/status` e
-`/api/coletas/resumo`.
+`/api/me`, `/api/stats`, `/api/processos`, `/api/coletas/status`,
+`/api/coletas/resumo` e `/api/qualidade/processos`.
+
+
+## Backup e restore
+
+Antes de aplicar migracoes em homologacao ou producao, gere um backup:
+
+```bash
+python tools/backup_db.py --output-dir backups
+```
+
+Para testar restauracao em ambiente local ou homologacao:
+
+```bash
+python tools/restore_db.py backups/arquivo.dump
+```
+
+Detalhes completos ficam em `docs/BACKUP_RESTORE.md`.
 
 ## Checklist antes de publicar
+
+Use tambem `docs/CHECKLIST_HOMOLOGACAO_PRODUCAO.md` como checklist operacional completo.
+
 
 - `.env` e `.env.txt` removidos do Git.
 - Chaves expostas rotacionadas.

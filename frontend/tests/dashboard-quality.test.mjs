@@ -10,4 +10,5 @@ test("dashboard exposes the process data quality summary", async () => {
   assert.match(source, /\/api\/qualidade\/processos/);
   assert.match(source, /Qualidade dos dados/);
   assert.match(source, /score_qualidade/);
+  assert.match(source, /navigate\("mapa"\)/);
 });

@@ -1,174 +1,671 @@
 import React from "react";
-import { MapPin, RefreshCw } from "lucide-react";
-import { ErrorState, LoadingState } from "../components/Empty";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
+import {
+  BellPlus,
+  ChevronLeft,
+  ChevronRight,
+  Eye,
+  FilterX,
+  LocateFixed,
+  MapPin,
+  RefreshCw,
+  TriangleAlert,
+  X,
+} from "lucide-react";
+import { Empty, ErrorState } from "../components/Empty";
 import { Page } from "../components/Page";
-import type { ApiClient, Processo } from "../types";
-import { fmt } from "../utils/format";
+import { ProcessModal } from "../components/ProcessModal";
+import { buildMapSummaryParams, markerTone } from "../map/model";
+import type {
+  ApiClient,
+  MapCitySummary,
+  MapFilters,
+  MapSummaryResponse,
+  Processo,
+  Screen,
+} from "../types";
+import { fmt, scoreLabel, shortDate } from "../utils/format";
 
-declare global {
-  interface Window {
-    L?: any;
-  }
-}
+const PAGE_SIZE = 10;
+const DEFAULT_CENTER: L.LatLngExpression = [-13.8, -55.9];
+const DEFAULT_FILTERS: MapFilters = {
+  regiao: "",
+  municipio: "",
+  faixa: "",
+  dataInicio: "2026-01-01",
+  dataFim: "",
+};
+const EMPTY_SUMMARY: MapSummaryResponse = {
+  total_processos: 0,
+  total_municipios: 0,
+  sem_localizacao: 0,
+  items: [],
+};
+const TILE_URL =
+  import.meta.env.VITE_MAP_TILE_URL ||
+  "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+const TILE_ATTRIBUTION =
+  import.meta.env.VITE_MAP_TILE_ATTRIBUTION ||
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-const CITY_COORDS: Record<string, [number, number]> = {
-  "Cuiabá": [-15.601, -56.097],
-  "Cuiaba": [-15.601, -56.097],
-  "Várzea Grande": [-15.646, -56.132],
-  "Rondonópolis": [-16.467, -54.637],
-  "Sinop": [-11.860, -55.509],
-  "Sorriso": [-12.542, -55.721],
-  "Lucas do Rio Verde": [-13.070, -55.923],
-  "Nova Mutum": [-13.837, -56.074],
-  "Primavera do Leste": [-15.544, -54.281],
-  "Tangará da Serra": [-14.622, -57.493],
-  "Cáceres": [-16.076, -57.681],
-  "Alta Floresta": [-9.875, -56.086],
-  "Barra do Garças": [-15.890, -52.256],
-  "Água Boa": [-14.051, -52.160],
-  "Juína": [-11.423, -58.758]
+const MARKER_COLORS: Record<ReturnType<typeof markerTone>, string> = {
+  critical: "#1f6b3a",
+  high: "#2f7d46",
+  medium: "#5c9966",
+  low: "#91b99a",
 };
 
-export function MapScreen({ api, region }: { api: ApiClient; region: string }) {
-  const mapRef = React.useRef<HTMLDivElement | null>(null);
-  const mapInstance = React.useRef<any>(null);
-  const markerLayer = React.useRef<any>(null);
-  const [items, setItems] = React.useState<Processo[]>([]);
-  const [status, setStatus] = React.useState("Carregando processos georreferenciados...");
-  const [loading, setLoading] = React.useState(true);
-  const [fallback, setFallback] = React.useState(false);
-  const [error, setError] = React.useState("");
+type ProcessListResponse = {
+  total: number;
+  offset: number;
+  limit: number;
+  items: Processo[];
+};
 
-  function ensureLeaflet() {
-    return new Promise<any>((resolve, reject) => {
-      if (window.L) return resolve(window.L);
-      if (!document.querySelector('link[data-leaflet="true"]')) {
-        const link = document.createElement("link");
-        link.rel = "stylesheet";
-        link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-        link.dataset.leaflet = "true";
-        document.head.appendChild(link);
-      }
-      const existing = document.querySelector('script[data-leaflet="true"]') as HTMLScriptElement | null;
-      if (existing) {
-        existing.addEventListener("load", () => resolve(window.L));
-        existing.addEventListener("error", reject);
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      script.dataset.leaflet = "true";
-      script.onload = () => resolve(window.L);
-      script.onerror = reject;
-      document.body.appendChild(script);
+type MapScreenProps = {
+  api: ApiClient;
+  region: string;
+  navigate: (screen: Screen) => void;
+  notify: (message: string) => void;
+};
+
+function markerColor(tone: ReturnType<typeof markerTone>) {
+  return MARKER_COLORS[tone];
+}
+
+function hasFiniteCoordinates(city: MapCitySummary) {
+  return Number.isFinite(city.lat) && Number.isFinite(city.lng);
+}
+
+export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
+  const mapContainerRef = React.useRef<HTMLDivElement | null>(null);
+  const mapInstanceRef = React.useRef<L.Map | null>(null);
+  const markerLayerRef = React.useRef<L.LayerGroup | null>(null);
+  const summaryRequestRef = React.useRef(0);
+  const [filters, setFilters] = React.useState<MapFilters>({ ...DEFAULT_FILTERS });
+  const [appliedFilters, setAppliedFilters] = React.useState<MapFilters>({ ...DEFAULT_FILTERS });
+  const [summary, setSummary] = React.useState<MapSummaryResponse>(EMPTY_SUMMARY);
+  const [selectedCity, setSelectedCity] = React.useState<MapCitySummary | null>(null);
+  const [processes, setProcesses] = React.useState<Processo[]>([]);
+  const [processTotal, setProcessTotal] = React.useState(0);
+  const [page, setPage] = React.useState(0);
+  const [selectedProcess, setSelectedProcess] = React.useState<Processo | null>(null);
+  const [followingId, setFollowingId] = React.useState<number | null>(null);
+  const [loadingSummary, setLoadingSummary] = React.useState(true);
+  const [loadingProcesses, setLoadingProcesses] = React.useState(false);
+  const [summaryError, setSummaryError] = React.useState("");
+  const [processError, setProcessError] = React.useState("");
+  const [processRefresh, setProcessRefresh] = React.useState(0);
+  const [tilesAvailable, setTilesAvailable] = React.useState(true);
+
+  React.useEffect(() => {
+    const container = mapContainerRef.current;
+    if (!container || mapInstanceRef.current) return;
+
+    const map = L.map(container, {
+      center: DEFAULT_CENTER,
+      zoom: 6,
+      zoomControl: true,
+      attributionControl: true,
     });
-  }
+    const markerLayer = L.layerGroup().addTo(map);
+    const tileLayer = L.tileLayer(TILE_URL, {
+      attribution: TILE_ATTRIBUTION,
+      maxZoom: 18,
+    });
+    const handleTileError = () => setTilesAvailable(false);
 
-  function coordsFor(processo: Processo): [number, number] | null {
-    const lat = Number(processo.lat);
-    const lng = Number(processo.lng);
-    if (Number.isFinite(lat) && Number.isFinite(lng) && lat && lng) return [lat, lng];
-    const city = String(processo.municipio || processo.comarca || "").trim();
-    return CITY_COORDS[city] || null;
-  }
+    tileLayer.on("tileerror", handleTileError);
+    tileLayer.addTo(map);
+    mapInstanceRef.current = map;
+    markerLayerRef.current = markerLayer;
 
-  async function loadMap() {
-    setLoading(true);
-    setFallback(false);
-    setError("");
-    const params = new URLSearchParams({ limit: "120" });
-    if (region) params.set("regiao", region);
-    const data = await api.get<any>(`/api/processos/mapa?${params.toString()}`);
+    const resizeFrame = window.requestAnimationFrame(() => map.invalidateSize());
+
+    return () => {
+      window.cancelAnimationFrame(resizeFrame);
+      tileLayer.off("tileerror", handleTileError);
+      tileLayer.remove();
+      markerLayer.clearLayers();
+      markerLayer.remove();
+      map.remove();
+      markerLayerRef.current = null;
+      mapInstanceRef.current = null;
+    };
+  }, []);
+
+  const loadSummary = React.useCallback(async () => {
+    const requestId = summaryRequestRef.current + 1;
+    summaryRequestRef.current = requestId;
+    setLoadingSummary(true);
+    setSummaryError("");
+
+    const params = buildMapSummaryParams(appliedFilters, region);
+    const data = await api.get<MapSummaryResponse>(
+      `/api/processos/mapa/resumo?${params.toString()}`,
+    );
+    if (requestId !== summaryRequestRef.current) return;
+
     if (!data) {
-      setError("Não foi possível carregar os processos do mapa.");
-      setLoading(false);
+      setSummary(EMPTY_SUMMARY);
+      setSelectedCity(null);
+      setSummaryError("Não foi possível carregar o resumo territorial.");
+      setLoadingSummary(false);
       return;
     }
-    const nextItems = (data.items || []).filter((item: Processo) => coordsFor(item));
-    setItems(nextItems);
 
-    try {
-      const L = await ensureLeaflet();
-      if (!mapRef.current) return;
-      if (!mapInstance.current) {
-        mapInstance.current = L.map(mapRef.current, { center: [-13.8, -55.9], zoom: 6, zoomControl: true });
-        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-          attribution: "OpenStreetMap",
-          maxZoom: 18
-        }).addTo(mapInstance.current);
-      }
-      if (markerLayer.current) markerLayer.current.clearLayers();
-      markerLayer.current = L.layerGroup().addTo(mapInstance.current);
-      const pinIcon = L.divIcon({
-        className: "process-pin",
-        html: `
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M12 2.75c-4.05 0-7.25 3.12-7.25 7.05 0 4.91 5.72 10.37 6.78 11.33a.7.7 0 0 0 .94 0c1.06-.96 6.78-6.42 6.78-11.33 0-3.93-3.2-7.05-7.25-7.05Z" />
-            <circle cx="12" cy="9.8" r="2.55" />
-          </svg>
-        `,
-        iconSize: [21, 27],
-        iconAnchor: [10.5, 25],
-        popupAnchor: [0, -24]
-      });
-      const bounds: any[] = [];
-      nextItems.forEach((processo: Processo) => {
-        const coords = coordsFor(processo);
-        if (!coords) return;
-        bounds.push(coords);
-        L.marker(coords, { icon: pinIcon })
-          .bindPopup(`
-            <strong>${processo.numero_cnj || "Processo"}</strong><br/>
-            ${processo.municipio || processo.comarca || "Município não informado"}<br/>
-            Score ${processo.score_total || 0} · ${processo.classe_processual || ""}
-          `)
-          .addTo(markerLayer.current);
-      });
-      if (bounds.length) mapInstance.current.fitBounds(bounds, { padding: [34, 34], maxZoom: 8 });
-      setStatus(`${fmt(nextItems.length)} processos com pin por município`);
-      window.setTimeout(() => mapInstance.current?.invalidateSize(), 80);
-    } catch {
-      setFallback(true);
-      setStatus("Mapa interativo indisponível. Pins exibidos em modo resumo.");
-    } finally {
-      setLoading(false);
+    const nextSummary: MapSummaryResponse = {
+      total_processos: data.total_processos,
+      total_municipios: data.total_municipios,
+      sem_localizacao: data.sem_localizacao,
+      items: data.items,
+    };
+    setSummary(nextSummary);
+    setSelectedCity((current) => {
+      if (!current) return null;
+      return nextSummary.items.find((city) => city.municipio === current.municipio) || null;
+    });
+    setLoadingSummary(false);
+  }, [api, appliedFilters, region]);
+
+  React.useEffect(() => {
+    void loadSummary();
+    return () => {
+      summaryRequestRef.current += 1;
+    };
+  }, [loadSummary]);
+
+  const selectCity = React.useCallback((city: MapCitySummary) => {
+    setSelectedCity(city);
+    setPage(0);
+    if (hasFiniteCoordinates(city)) {
+      const map = mapInstanceRef.current;
+      const targetZoom = Math.max(map?.getZoom() || 6, 8);
+      map?.setView([city.lat, city.lng], targetZoom, { animate: true });
     }
+  }, []);
+
+  React.useEffect(() => {
+    const map = mapInstanceRef.current;
+    const markerLayer = markerLayerRef.current;
+    if (!map || !markerLayer) return;
+
+    markerLayer.clearLayers();
+    const clickBindings: Array<{
+      layer: L.CircleMarker | L.Marker;
+      activate: () => void;
+    }> = [];
+
+    summary.items.filter(hasFiniteCoordinates).forEach((city) => {
+      const selected = city.municipio === selectedCity?.municipio;
+      const coordinates: L.LatLngExpression = [city.lat, city.lng];
+      const activate = () => selectCity(city);
+      const marker = L.circleMarker(coordinates, {
+        radius: 13,
+        weight: selected ? 3 : 2,
+        color: "#ffffff",
+        fillColor: markerColor(markerTone(city.faixa_dominante)),
+        fillOpacity: 1,
+      });
+      const tooltipNode = document.createElement("div");
+      tooltipNode.textContent = `${city.municipio}: ${fmt(city.total_processos)} processos, maior score ${fmt(city.maior_score)}`;
+      marker.bindTooltip(tooltipNode, {
+        className: "map-city-tooltip",
+        direction: "top",
+        offset: L.point(0, -12),
+      });
+      marker.on("click", activate);
+      marker.addTo(markerLayer);
+
+      const countNode = document.createElement("span");
+      countNode.className = city.total_processos >= 1000
+        ? "map-city-count-value compact"
+        : "map-city-count-value";
+      countNode.textContent = fmt(city.total_processos);
+      const countIcon = L.divIcon({
+        className: `map-city-count${selected ? " is-selected" : ""}`,
+        html: countNode,
+        iconSize: [26, 26],
+        iconAnchor: [13, 13],
+      });
+      const countMarker = L.marker(coordinates, {
+        alt: `${city.municipio}, ${fmt(city.total_processos)} processos`,
+        icon: countIcon,
+        keyboard: true,
+        title: `Selecionar ${city.municipio}`,
+        zIndexOffset: selected ? 1000 : 0,
+      });
+      countMarker.on("click", activate);
+      countMarker.addTo(markerLayer);
+      clickBindings.push({ layer: marker, activate }, { layer: countMarker, activate });
+    });
+
+    return () => {
+      clickBindings.forEach(({ layer, activate }) => layer.off("click", activate));
+      markerLayer.clearLayers();
+    };
+  }, [selectCity, selectedCity?.municipio, summary.items]);
+
+  React.useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const coordinates = summary.items
+      .filter(hasFiniteCoordinates)
+      .map((city): L.LatLngTuple => [city.lat, city.lng]);
+
+    if (!coordinates.length) {
+      map.setView(DEFAULT_CENTER, 6, { animate: false });
+      return;
+    }
+
+    const bounds = L.latLngBounds(coordinates);
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [34, 34], maxZoom: 8, animate: false });
+    }
+  }, [summary.items]);
+
+  React.useEffect(() => {
+    if (!selectedCity) {
+      setProcesses([]);
+      setProcessTotal(0);
+      setProcessError("");
+      setLoadingProcesses(false);
+      return;
+    }
+
+    let active = true;
+    async function loadProcesses() {
+      setLoadingProcesses(true);
+      setProcessError("");
+      const params = new URLSearchParams({
+        limit: "10",
+        offset: String(page * PAGE_SIZE),
+      });
+      params.set("municipio", selectedCity.municipio);
+      const effectiveRegion = region || appliedFilters.regiao;
+      if (effectiveRegion) params.set("regiao", effectiveRegion);
+      if (appliedFilters.faixa) params.set("faixa", appliedFilters.faixa);
+      if (appliedFilters.dataInicio) params.set("data_inicio", appliedFilters.dataInicio);
+      if (appliedFilters.dataFim) params.set("data_fim", appliedFilters.dataFim);
+
+      const data = await api.get<ProcessListResponse>(
+        `/api/processos?${params.toString()}`,
+      );
+      if (!active) return;
+      if (!data) {
+        setProcesses([]);
+        setProcessTotal(0);
+        setProcessError("Não foi possível carregar os processos deste município.");
+        setLoadingProcesses(false);
+        return;
+      }
+
+      const maxPage = Math.max(0, Math.ceil(data.total / PAGE_SIZE) - 1);
+      if (page > maxPage) {
+        setPage(maxPage);
+        return;
+      }
+      if (page === 0 && data.total === 0) {
+        setSelectedCity(null);
+        setProcesses([]);
+        setProcessTotal(0);
+        setLoadingProcesses(false);
+        return;
+      }
+
+      setProcesses(data.items);
+      setProcessTotal(data.total);
+      setLoadingProcesses(false);
+    }
+
+    void loadProcesses();
+    return () => {
+      active = false;
+    };
+  }, [api, appliedFilters, page, processRefresh, region, selectedCity]);
+
+  async function followProcess(processo: Processo) {
+    const id = Number(processo.id);
+    if (!Number.isInteger(id) || id <= 0) {
+      notify("Processo sem identificador interno.");
+      return;
+    }
+
+    setFollowingId(id);
+    const result = await api.post<{ status: string }>(
+      `/api/processos/${id}/acompanhar`,
+    );
+    setFollowingId(null);
+    if (result?.status === "ok") {
+      notify("Processo adicionado à Central de Alertas.");
+      navigate("alertas");
+      return;
+    }
+    notify("Não foi possível acompanhar este processo.");
   }
 
-  React.useEffect(() => { loadMap(); }, [api, region]);
+  function applyFilters(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPage(0);
+    setAppliedFilters({ ...filters });
+  }
+
+  function clearFilters() {
+    setFilters({ ...DEFAULT_FILTERS });
+    setAppliedFilters({ ...DEFAULT_FILTERS });
+    setPage(0);
+  }
+
+  const locatedProcesses = summary.total_processos;
+  const totalFound = summary.total_processos + summary.sem_localizacao;
+  const pageCount = Math.max(1, Math.ceil(processTotal / PAGE_SIZE));
 
   return (
-    <Page title="Mapa Territorial" subtitle={region ? `Processos por cidade em ${region}` : "Processos com localização por município"} action={<button onClick={loadMap}><RefreshCw size={14} /> Atualizar</button>}>
-      <div className="map-shell">
-        <div className="map-toolbar">
-          <div><MapPin size={16} /> {fmt(items.length)} pins de processos</div>
-          <span>{status}</span>
-        </div>
-        {error && <ErrorState text={error} retry={loadMap} />}
-        <div ref={mapRef} className={`leaflet-map ${fallback ? "hidden" : ""}`} />
-        {loading && <LoadingState text="Carregando mapa territorial..." />}
-        {!loading && fallback && !error && <FallbackPins items={items.slice(0, 12)} />}
+    <Page
+      title="Mapa Territorial"
+      subtitle={`${fmt(locatedProcesses)} processos georreferenciados em ${fmt(summary.total_municipios)} municípios`}
+      action={
+        <button onClick={() => void loadSummary()} disabled={loadingSummary}>
+          <RefreshCw size={14} /> Atualizar
+        </button>
+      }
+    >
+      <MapFilterBar
+        filters={filters}
+        setFilters={setFilters}
+        globalRegion={region}
+        apply={applyFilters}
+        clear={clearFilters}
+      />
+
+      <div className="map-summary-strip" aria-label="Resumo territorial">
+        <div><span>Processos encontrados</span><strong>{fmt(totalFound)}</strong></div>
+        <div><span>Com localização</span><strong>{fmt(locatedProcesses)}</strong></div>
+        <div><span>Municípios</span><strong>{fmt(summary.total_municipios)}</strong></div>
+        <div><span>Sem localização</span><strong>{fmt(summary.sem_localizacao)}</strong></div>
+        <div><span>Recorte</span><strong>{region || appliedFilters.regiao || "Mato Grosso"}</strong></div>
       </div>
+
+      {summaryError && <ErrorState text={summaryError} retry={() => void loadSummary()} />}
+
+      <section className="map-shell" aria-label="Mapa de processos por município">
+        <div className="map-workspace">
+          <div className="map-canvas-frame">
+            <div ref={mapContainerRef} className="leaflet-map" />
+
+            {loadingSummary && (
+              <div className="map-status-overlay" role="status">
+                <span className="spinner" /> Carregando municípios...
+              </div>
+            )}
+            {!loadingSummary && !summaryError && !summary.items.length && (
+              <div className="map-empty-overlay">
+                <MapPin size={20} />
+                <strong>Nenhum município encontrado</strong>
+                <span>Ajuste o recorte para voltar a exibir oportunidades.</span>
+                <button className="secondary" onClick={clearFilters}>
+                  <FilterX size={14} /> Limpar filtros
+                </button>
+              </div>
+            )}
+            {!tilesAvailable && (
+              <div className="map-tile-warning" role="status">
+                <TriangleAlert size={15} />
+                Basemap indisponível. Os dados permanecem navegáveis.
+              </div>
+            )}
+            <MapLegend />
+          </div>
+
+          <MunicipalPanel
+            city={selectedCity}
+            cities={summary.items}
+            processes={processes}
+            processTotal={processTotal}
+            page={page}
+            pageCount={pageCount}
+            loading={loadingProcesses}
+            error={processError}
+            followingId={followingId}
+            selectCity={selectCity}
+            clearSelection={() => setSelectedCity(null)}
+            retry={() => setProcessRefresh((current) => current + 1)}
+            setPage={setPage}
+            openProcess={setSelectedProcess}
+            followProcess={followProcess}
+          />
+        </div>
+      </section>
+
+      {selectedProcess && (
+        <ProcessModal
+          processo={selectedProcess}
+          close={() => setSelectedProcess(null)}
+          follow={followProcess}
+        />
+      )}
     </Page>
   );
 }
 
-function FallbackPins({ items }: { items: Processo[] }) {
+function MapFilterBar({
+  filters,
+  setFilters,
+  globalRegion,
+  apply,
+  clear,
+}: {
+  filters: MapFilters;
+  setFilters: React.Dispatch<React.SetStateAction<MapFilters>>;
+  globalRegion: string;
+  apply: (event: React.FormEvent<HTMLFormElement>) => void;
+  clear: () => void;
+}) {
   return (
-    <div className="map-fallback">
-      <div className="map-fallback-summary">
-        <div><MapPin size={18} /> Pins por cidade</div>
-        <strong>{fmt(items.length)} processos</strong>
+    <form className="map-filter-bar" onSubmit={apply}>
+      <label className="field-compact">
+        <span>Faixa</span>
+        <select
+          value={filters.faixa}
+          onChange={(event) => setFilters((current) => ({ ...current, faixa: event.target.value }))}
+        >
+          <option value="">Todas as faixas</option>
+          <option value="janela_quente">Janela quente</option>
+          <option value="provavel">Provável perícia</option>
+          <option value="observacao">Observação</option>
+          <option value="frio">Frio</option>
+        </select>
+      </label>
+      <label className="field-compact">
+        <span>Região IMEA</span>
+        <select
+          value={globalRegion || filters.regiao}
+          disabled={Boolean(globalRegion)}
+          onChange={(event) => setFilters((current) => ({ ...current, regiao: event.target.value }))}
+        >
+          <option value="">Mato Grosso</option>
+          <option>Médio-Norte</option>
+          <option>Norte</option>
+          <option>Centro-Sul</option>
+          <option>Oeste</option>
+          <option>Leste</option>
+          <option>Sudoeste</option>
+        </select>
+      </label>
+      <label className="field-compact">
+        <span>Município</span>
+        <input
+          value={filters.municipio}
+          placeholder="Buscar município"
+          onChange={(event) => setFilters((current) => ({ ...current, municipio: event.target.value }))}
+        />
+      </label>
+      <label className="field-compact">
+        <span>De</span>
+        <input
+          type="date"
+          value={filters.dataInicio}
+          onChange={(event) => setFilters((current) => ({ ...current, dataInicio: event.target.value }))}
+        />
+      </label>
+      <label className="field-compact">
+        <span>Até</span>
+        <input
+          type="date"
+          value={filters.dataFim}
+          onChange={(event) => setFilters((current) => ({ ...current, dataFim: event.target.value }))}
+        />
+      </label>
+      <div className="map-filter-actions">
+        <button type="submit" className="primary"><LocateFixed size={14} /> Aplicar</button>
+        <button type="button" className="secondary icon-button" onClick={clear} aria-label="Limpar filtros" title="Limpar filtros">
+          <FilterX size={15} />
+        </button>
       </div>
-      <div className="map-fallback-grid">
-        {items.length ? items.map((processo) => (
-          <div className="map-fallback-item" key={processo.id || processo.numero_cnj}>
-            <strong>{processo.municipio || processo.comarca || "Cidade não informada"}</strong>
-            <span>{processo.numero_cnj || "CNJ pendente"}</span>
-            <span>Score {processo.score_total || 0} · {processo.classe_processual || "Classe pendente"}</span>
-          </div>
-        )) : <span className="map-fallback-empty">Nenhum processo com município reconhecido para posicionar no mapa.</span>}
-      </div>
+    </form>
+  );
+}
+
+function MapLegend() {
+  const entries = [
+    ["critical", "Janela quente"],
+    ["high", "Provável"],
+    ["medium", "Observação"],
+    ["low", "Frio"],
+  ] as const;
+
+  return (
+    <div className="map-legend" aria-label="Legenda de oportunidade">
+      {entries.map(([tone, label]) => (
+        <span key={tone}><i className={tone} />{label}</span>
+      ))}
     </div>
+  );
+}
+
+function MunicipalPanel({
+  city,
+  cities,
+  processes,
+  processTotal,
+  page,
+  pageCount,
+  loading,
+  error,
+  followingId,
+  selectCity,
+  clearSelection,
+  retry,
+  setPage,
+  openProcess,
+  followProcess,
+}: {
+  city: MapCitySummary | null;
+  cities: MapCitySummary[];
+  processes: Processo[];
+  processTotal: number;
+  page: number;
+  pageCount: number;
+  loading: boolean;
+  error: string;
+  followingId: number | null;
+  selectCity: (city: MapCitySummary) => void;
+  clearSelection: () => void;
+  retry: () => void;
+  setPage: React.Dispatch<React.SetStateAction<number>>;
+  openProcess: (processo: Processo) => void;
+  followProcess: (processo: Processo) => void;
+}) {
+  if (!city) {
+    const leadingCities = [...cities]
+      .sort((left, right) => right.total_processos - left.total_processos)
+      .slice(0, 8);
+    return (
+      <aside className="map-side-panel">
+        <div className="map-panel-header">
+          <div>
+            <span>Visão municipal</span>
+            <strong>Selecione uma cidade</strong>
+          </div>
+        </div>
+        <p className="map-panel-guidance">Use um marcador ou a lista para consultar os processos do município.</p>
+        {leadingCities.length ? (
+          <div className="map-city-list">
+            {leadingCities.map((item) => (
+              <button key={item.municipio} onClick={() => selectCity(item)}>
+                <span><strong>{item.municipio}</strong><small>{item.regiao_imea || "Região não informada"}</small></span>
+                <b>{fmt(item.total_processos)}</b>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <Empty text="Nenhum município disponível para seleção." />
+        )}
+      </aside>
+    );
+  }
+
+  return (
+    <aside className="map-side-panel" aria-label={`Processos de ${city.municipio}`}>
+      <div className="map-panel-header">
+        <div>
+          <span>{city.regiao_imea || "Mato Grosso"}</span>
+          <strong>{city.municipio}</strong>
+        </div>
+        <button className="secondary icon-button" onClick={clearSelection} aria-label="Fechar município" title="Fechar município">
+          <X size={15} />
+        </button>
+      </div>
+      <div className="map-city-stats">
+        <div><span>Processos</span><strong>{fmt(city.total_processos)}</strong></div>
+        <div><span>Maior score</span><strong>{fmt(city.maior_score)}</strong></div>
+        <div><span>Quentes</span><strong>{fmt(city.processos_quentes)}</strong></div>
+        <div><span>Prováveis</span><strong>{fmt(city.processos_provaveis)}</strong></div>
+      </div>
+
+      {error && <ErrorState text={error} retry={retry} />}
+      {loading ? (
+        <div className="map-panel-loading" role="status"><span className="spinner" /> Carregando processos...</div>
+      ) : processes.length ? (
+        <div className="map-process-list">
+          {processes.map((processo) => {
+            const id = Number(processo.id);
+            const tone = markerTone(String(processo.faixa_probabilidade || ""));
+            return (
+              <article className="map-process-row" key={processo.id || processo.numero_cnj}>
+                <div className="map-process-heading">
+                  <strong>{processo.numero_cnj || "CNJ não informado"}</strong>
+                  <span className={`map-score-chip ${tone}`}>{fmt(processo.score_total)}</span>
+                </div>
+                <span className="map-process-class">{processo.classe_processual || "Classe não informada"}</span>
+                <div className="map-process-meta">
+                  <span>{shortDate(processo.data_distribuicao)}</span>
+                  <span>{scoreLabel(processo.faixa_probabilidade)}</span>
+                </div>
+                <div className="map-process-actions">
+                  <button className="secondary" onClick={() => openProcess(processo)}><Eye size={13} /> Detalhes</button>
+                  <button className="secondary" disabled={followingId === id} onClick={() => followProcess(processo)}><BellPlus size={13} /> Acompanhar</button>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty text="Nenhum processo disponível neste município." />
+      )}
+
+      <div className="map-panel-pagination">
+        <span>{fmt(processTotal)} processos · página {page + 1} de {pageCount}</span>
+        <div>
+          <button className="secondary icon-button" disabled={page <= 0 || loading} onClick={() => setPage((current) => current - 1)} aria-label="Página anterior" title="Página anterior">
+            <ChevronLeft size={15} />
+          </button>
+          <button className="secondary icon-button" disabled={page + 1 >= pageCount || loading} onClick={() => setPage((current) => current + 1)} aria-label="Próxima página" title="Próxima página">
+            <ChevronRight size={15} />
+          </button>
+        </div>
+      </div>
+    </aside>
   );
 }

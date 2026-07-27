@@ -63,7 +63,14 @@ export type ApiClient = {
   get<T>(path: string): Promise<T | null>;
   post<T>(path: string, body?: unknown): Promise<T | null>;
   patch<T>(path: string, body?: unknown): Promise<T | null>;
+  getLastError?(): ApiRequestError | null;
 };
+export type ApiRequestError = {
+  status: number;
+  detail: string;
+  retryAfterSeconds?: number;
+};
+
 export type MapFilters = {
   regiao: string;
   municipio: string;

@@ -31,6 +31,7 @@ textarea { min-height: 130px; resize: vertical; }
 .login-brand img { width: 100%; max-width: 300px; height: auto; display: block; }
 .login-subtitle { color: var(--muted); margin-bottom: 14px; }
 .login-panel label { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.login-error { border: 1px solid #c95f5f; background: #fff4f4; color: #8f2020; border-radius: 6px; padding: 10px 12px; font-size: 13px; line-height: 1.4; }
 
 .app { min-height: 100vh; }
 .sidebar-global { position: fixed; inset: 0 auto 0 0; width: 264px; background: var(--ink); color: #fff; display: flex; flex-direction: column; border-right: 1px solid rgba(255,255,255,.08); }

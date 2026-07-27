@@ -38,3 +38,9 @@ def test_ci_pins_linux_frontend_toolchain_and_checks_generated_diff():
     assert 'test "$(node --version)" = "v22.23.1"' in workflow
     assert 'test "$(npm --version)" = "10.9.8"' in workflow
     assert build_step < diff_step
+
+
+def test_vite_serves_imported_assets_below_static():
+    vite_config = (ROOT / "vite.config.ts").read_text(encoding="utf-8")
+
+    assert 'base: "/static/"' in vite_config

@@ -90,6 +90,7 @@ def test_login_throttle_blocks_after_configured_failures(monkeypatch):
         main_module._assert_login_allowed(request, "admin")
 
     assert exc.value.status_code == 429
+    assert exc.value.headers == {"Retry-After": "300"}
 
 
 def test_login_throttle_clears_failures(monkeypatch):

@@ -299,6 +299,7 @@ def _assert_login_allowed(request: Request, username: str) -> str:
         raise HTTPException(
             status_code=429,
             detail="Muitas tentativas de login. Tente novamente mais tarde.",
+            headers={"Retry-After": str(window_seconds)},
         )
     return key
 

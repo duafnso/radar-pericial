@@ -641,6 +641,19 @@ def test_processos_mapa_resumo_returns_aggregated_cities(api_client):
     assert fake_db.map_limit_cidades == 100
 
 
+def test_processos_mapa_legacy_returns_authenticated_payload(api_client):
+    client, _ = api_client
+
+    response = client.get(
+        "/api/processos/mapa?regiao=Centro-Sul",
+        headers=auth_header("token-viewer"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["total"] == 1
+    assert response.json()["items"][0]["municipio"] == "Cuiaba"
+
+
 def test_processos_mapa_resumo_requires_authentication(api_client):
     client, _ = api_client
 

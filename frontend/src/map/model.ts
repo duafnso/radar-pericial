@@ -1,4 +1,10 @@
-import type { MapFilters, MapProcess, MapProcessListResponse } from "../types";
+import type {
+  MapCitySummary,
+  MapFilters,
+  MapProcess,
+  MapProcessListResponse,
+  MapSummaryResponse,
+} from "../types";
 
 export const MAP_TONE_COLORS = {
   critical: "#12492a",
@@ -91,6 +97,76 @@ export function parseProcessListResponse(value: unknown): MapProcessListResponse
     total: record.total,
     offset: record.offset,
     limit: record.limit,
+    items,
+  };
+}
+
+function isFiniteNonNegativeNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function parseMapCitySummary(value: unknown): MapCitySummary | null {
+  if (!isRecord(value)) return null;
+
+  const municipio = value.municipio;
+  const regiaoImea = value.regiao_imea;
+  const lat = value.lat;
+  const lng = value.lng;
+  const faixaDominante = value.faixa_dominante;
+  const ultimaDistribuicao = value.ultima_distribuicao;
+  if (
+    typeof municipio !== "string" || !municipio.trim() ||
+    typeof regiaoImea !== "string" ||
+    typeof lat !== "number" || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
+    typeof lng !== "number" || !Number.isFinite(lng) || lng < -180 || lng > 180 ||
+    typeof faixaDominante !== "string" || !faixaDominante ||
+    typeof ultimaDistribuicao !== "string"
+  ) return null;
+
+  const totalProcessos = value.total_processos;
+  const processosQuentes = value.processos_quentes;
+  const processosProvaveis = value.processos_provaveis;
+  const maiorScore = value.maior_score;
+  if (
+    !isNonNegativeInteger(totalProcessos) ||
+    !isNonNegativeInteger(processosQuentes) ||
+    !isNonNegativeInteger(processosProvaveis) ||
+    !isFiniteNonNegativeNumber(maiorScore)
+  ) return null;
+
+  return {
+    municipio,
+    regiao_imea: regiaoImea,
+    lat,
+    lng,
+    total_processos: totalProcessos,
+    maior_score: maiorScore,
+    processos_quentes: processosQuentes,
+    processos_provaveis: processosProvaveis,
+    faixa_dominante: faixaDominante,
+    ultima_distribuicao: ultimaDistribuicao,
+  };
+}
+
+export function parseMapSummaryResponse(value: unknown): MapSummaryResponse | null {
+  if (!isRecord(value) || !Array.isArray(value.items)) return null;
+  if (
+    !isNonNegativeInteger(value.total_processos) ||
+    !isNonNegativeInteger(value.total_municipios) ||
+    !isNonNegativeInteger(value.sem_localizacao)
+  ) return null;
+
+  const items: MapCitySummary[] = [];
+  for (const item of value.items) {
+    const parsed = parseMapCitySummary(item);
+    if (!parsed) return null;
+    items.push(parsed);
+  }
+
+  return {
+    total_processos: value.total_processos,
+    total_municipios: value.total_municipios,
+    sem_localizacao: value.sem_localizacao,
     items,
   };
 }

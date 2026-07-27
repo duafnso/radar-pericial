@@ -165,11 +165,12 @@ Validado localmente em 2026-07-20 com dados reais do PostGIS.
 ### Pendente antes do uso comercial
 - Escolher um provedor comercial de tiles com SLA e termos compativeis.
 - Usar URL e atribuicao do provedor em `VITE_MAP_TILE_URL` e `VITE_MAP_TILE_ATTRIBUTION`.
+- Trocar o provedor exige rebuild da imagem Docker, pois o Vite incorpora essas variaveis no bundle.
 - Manter a atribuicao visivel no mapa; ela e obrigatoria para qualquer provedor.
 - Validar os termos e a disponibilidade do provedor escolhido em homologacao e producao.
 
 ### Checklist visual pendente
-- Nenhum navegador real estava disponivel nesta validacao; nao declarar este checklist como concluido.
+- Edge headless foi executado nesta validacao; ainda falta homologacao humana em navegador real e com o provedor comercial definitivo.
 - Conferir basemap, marcadores compactos e contadores em 1440x900, 1024x768 e 390x844.
 - Confirmar selecao municipal, detalhes e acompanhamento de processo.
 - Simular falha de tiles e confirmar que os dados municipais continuam visiveis.

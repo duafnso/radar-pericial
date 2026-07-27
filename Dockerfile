@@ -2,6 +2,11 @@ FROM node:22-slim AS frontend-build
 
 WORKDIR /app
 
+ARG VITE_MAP_TILE_URL
+ARG VITE_MAP_TILE_ATTRIBUTION
+ENV VITE_MAP_TILE_URL=${VITE_MAP_TILE_URL} \
+    VITE_MAP_TILE_ATTRIBUTION=${VITE_MAP_TILE_ATTRIBUTION}
+
 COPY package.json package-lock.json tsconfig.json vite.config.ts index.html ./
 COPY frontend ./frontend
 COPY interface ./interface

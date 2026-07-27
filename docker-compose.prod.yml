@@ -36,6 +36,9 @@ x-app-build: &app-build
   build:
     context: .
     dockerfile: Dockerfile
+    args:
+      VITE_MAP_TILE_URL: ${VITE_MAP_TILE_URL:?VITE_MAP_TILE_URL is required}
+      VITE_MAP_TILE_ATTRIBUTION: ${VITE_MAP_TILE_ATTRIBUTION:?VITE_MAP_TILE_ATTRIBUTION is required}
   restart: unless-stopped
   networks:
     - radar_network

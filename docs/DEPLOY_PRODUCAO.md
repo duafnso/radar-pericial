@@ -235,7 +235,7 @@ VITE_MAP_TILE_URL=https://tiles.seu-provedor.example/{z}/{x}/{y}.png
 VITE_MAP_TILE_ATTRIBUTION=Texto ou HTML de atribuicao exigido pelo provedor
 ```
 
-Em producao, configure as duas variaveis com um provedor comercial aprovado.
+Em producao, configure as duas variaveis com um provedor comercial aprovado. Como o Vite incorpora esses valores no bundle, alterar URL ou atribuicao exige executar novamente o build Docker e subir a nova imagem.
 A atribuicao deve permanecer visivel no controle do mapa e e obrigatoria.
 OpenStreetMap e apenas o fallback de desenvolvimento local; nao o use como provedor comercial sem revisao de termos, capacidade e politica de uso.
 

@@ -1729,16 +1729,29 @@ class Database:
                    MAX(data_distribuicao)::text AS ultima_distribuicao
             FROM filtrados
             WHERE geometry IS NOT NULL
+              AND ST_IsValid(geometry)
+              AND NOT ST_IsEmpty(geometry)
             GROUP BY municipio, geometry
             ORDER BY maior_score DESC, total_processos DESC, municipio
             LIMIT :limit_cidades
         """, params)
         count_params = {key: value for key, value in params.items() if key != "limit_cidades"}
         totals = self.query(f"""
-            SELECT COUNT(*) FILTER (WHERE m.geometry IS NOT NULL)::int AS total_processos,
-                   COUNT(DISTINCT m.nome)
-                       FILTER (WHERE m.geometry IS NOT NULL)::int AS total_municipios,
-                   COUNT(*) FILTER (WHERE m.geometry IS NULL)::int AS sem_localizacao
+            SELECT COUNT(*) FILTER (
+                       WHERE m.geometry IS NOT NULL
+                         AND ST_IsValid(m.geometry)
+                         AND NOT ST_IsEmpty(m.geometry)
+                   )::int AS total_processos,
+                   COUNT(DISTINCT m.nome) FILTER (
+                       WHERE m.geometry IS NOT NULL
+                         AND ST_IsValid(m.geometry)
+                         AND NOT ST_IsEmpty(m.geometry)
+                   )::int AS total_municipios,
+                   COUNT(*) FILTER (
+                       WHERE m.geometry IS NULL
+                          OR NOT ST_IsValid(m.geometry)
+                          OR ST_IsEmpty(m.geometry)
+                   )::int AS sem_localizacao
             FROM processos p
             LEFT JOIN LATERAL (
                 SELECT sp.score_total, sp.faixa_probabilidade

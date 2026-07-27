@@ -428,6 +428,10 @@ def test_resumo_mapa_processos_aggregates_before_city_limit(monkeypatch):
     assert "COALESCE(faixa_probabilidade, 'frio') ASC" in items_sql
     assert "GROUP BY municipio, geometry" in items_sql
     assert "ST_PointOnSurface(geometry)" in items_sql
+    for predicate in ("geometry IS NOT NULL", "ST_IsValid(geometry)", "NOT ST_IsEmpty(geometry)"):
+        assert predicate in items_sql
+    for predicate in ("m.geometry IS NOT NULL", "ST_IsValid(m.geometry)", "NOT ST_IsEmpty(m.geometry)"):
+        assert predicate in totals_sql
     assert items_params == {
         "limit_cidades": 100,
         "regiao": "Centro-Sul",

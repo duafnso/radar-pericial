@@ -476,3 +476,31 @@ describe("map failure states and cleanup", () => {
     expect(map.remove).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe("summary payload failures", () => {
+  it("clears stale municipal state and exposes retry when the aggregate payload is invalid", async () => {
+    let summaryCalls = 0;
+    const api = createApi({ total: 1, offset: 0, limit: 10, items: [processItem(1, "STALE-PROCESS")] });
+    api.get = vi.fn((path: string) => {
+      if (!path.startsWith("/api/processos/mapa/resumo")) {
+        return Promise.resolve({ total: 1, offset: 0, limit: 10, items: [processItem(1, "STALE-PROCESS")] });
+      }
+      summaryCalls += 1;
+      return Promise.resolve(summaryCalls === 1 ? summary : { ...summary, items: null });
+    });
+    renderMap(api);
+
+    await selectCuiaba();
+    expect(await screen.findByText("STALE-PROCESS")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: /Atualizar/i }));
+
+    expect(await screen.findByText("N\u00e3o foi poss\u00edvel carregar o resumo territorial.")).toBeInTheDocument();
+    expect(screen.queryByText("STALE-PROCESS")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Processos de Cuiab\u00e1")).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    await waitFor(() => expect(summaryCalls).toBe(3));
+  });
+});

@@ -21,6 +21,7 @@ import {
   buildMapSummaryParams,
   formatCivilDate,
   markerTone,
+  parseMapSummaryResponse,
   parseProcessListResponse,
   resolveTileConfig,
 } from "../map/model";
@@ -91,6 +92,17 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
   const [processRefresh, setProcessRefresh] = React.useState(0);
   const [tilesAvailable, setTilesAvailable] = React.useState(true);
 
+  const clearSummaryDependentState = React.useCallback(() => {
+    setSummary(EMPTY_SUMMARY);
+    setSelectedCity(null);
+    setProcesses([]);
+    setProcessTotal(0);
+    setPage(0);
+    setSelectedProcess(null);
+    setProcessError("");
+    setLoadingProcesses(false);
+  }, []);
+
   React.useEffect(() => {
     const container = mapContainerRef.current;
     if (!container || mapInstanceRef.current) return;
@@ -134,32 +146,25 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
     setSummaryError("");
 
     const params = buildMapSummaryParams(appliedFilters, region);
-    const data = await api.get<MapSummaryResponse>(
+    const payload = await api.get<unknown>(
       `/api/processos/mapa/resumo?${params.toString()}`,
     );
     if (requestId !== summaryRequestRef.current) return;
 
-    if (!data) {
-      setSummary(EMPTY_SUMMARY);
-      setSelectedCity(null);
-      setSummaryError("Não foi possível carregar o resumo territorial.");
+    const nextSummary = parseMapSummaryResponse(payload);
+    if (!nextSummary) {
+      clearSummaryDependentState();
+      setSummaryError("N\u00e3o foi poss\u00edvel carregar o resumo territorial.");
       setLoadingSummary(false);
       return;
     }
-
-    const nextSummary: MapSummaryResponse = {
-      total_processos: data.total_processos,
-      total_municipios: data.total_municipios,
-      sem_localizacao: data.sem_localizacao,
-      items: data.items,
-    };
     setSummary(nextSummary);
     setSelectedCity((current) => {
       if (!current) return null;
       return nextSummary.items.find((city) => city.municipio === current.municipio) || null;
     });
     setLoadingSummary(false);
-  }, [api, appliedFilters, region]);
+  }, [api, appliedFilters, clearSummaryDependentState, region]);
 
   React.useEffect(() => {
     void loadSummary();

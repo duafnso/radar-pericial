@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAP_TONE_COLORS,
   formatCivilDate,
+  parseMapSummaryResponse,
   parseProcessListResponse,
   resolveTileConfig,
 } from "../src/map/model";
@@ -54,6 +55,25 @@ describe("map process response parsing", () => {
     { total: 1, offset: 0, limit: 10, items: [{ id: "broken" }] },
   ])("rejects an invalid paginated payload", (payload) => {
     expect(parseProcessListResponse(payload)).toBeNull();
+  });
+});
+
+const validMapSummary = { total_processos: 2, total_municipios: 1, sem_localizacao: 0, items: [{ municipio: "Cuiaba", regiao_imea: "Centro-Sul", lat: -15.6, lng: -56.1, total_processos: 2, maior_score: 82, processos_quentes: 1, processos_provaveis: 1, faixa_dominante: "janela_quente", ultima_distribuicao: "2026-07-01" }] };
+
+describe("map summary response parsing", () => {
+  it("accepts an empty, structurally valid map summary", () => {
+    expect(parseMapSummaryResponse({ ...validMapSummary, items: [] })).toEqual({ ...validMapSummary, items: [] });
+  });
+
+  it.each([
+    null,
+    { ...validMapSummary, items: null },
+    { ...validMapSummary, total_processos: "2" },
+    { ...validMapSummary, items: [{ ...validMapSummary.items[0], lat: Number.NaN }] },
+    { ...validMapSummary, items: [{ ...validMapSummary.items[0], total_processos: -1 }] },
+    { ...validMapSummary, items: [{ ...validMapSummary.items[0], municipio: "" }] },
+  ])("rejects malformed aggregate payloads", (payload) => {
+    expect(parseMapSummaryResponse(payload)).toBeNull();
   });
 });
 

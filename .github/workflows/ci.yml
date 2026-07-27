@@ -130,6 +130,9 @@ jobs:
       - name: Build frontend
         run: npm run frontend:build
 
+      - name: Verify tracked frontend assets are synchronized
+        run: git diff --exit-code -- interface/templates interface/static/assets
+
   docker-build:
     name: Docker image build
     runs-on: ubuntu-latest

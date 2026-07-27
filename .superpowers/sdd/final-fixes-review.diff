@@ -1,0 +1,733 @@
+# Review package: 7f10dfd..22e71a3
+
+## Commits
+22e71a3 fix: harden territorial map contracts
+
+## Files changed
+ .env.example                                |  4 ++
+ Dockerfile                                  |  5 ++
+ database/db.py                              | 21 ++++++--
+ docker-compose.prod.yml                     |  3 ++
+ docker-compose.yml                          |  3 ++
+ docs/DEPLOY_PRODUCAO.md                     |  2 +-
+ docs/PENDENCIAS_PRODUCAO.md                 |  3 +-
+ frontend/src/map/model.ts                   | 78 ++++++++++++++++++++++++++++-
+ frontend/src/screens/MapScreen.tsx          | 31 +++++++-----
+ frontend/tests/map-model.behavior.test.ts   | 20 ++++++++
+ frontend/tests/map-screen.behavior.test.tsx | 28 +++++++++++
+ index.html                                  |  1 +
+ tests/integration/test_postgis_schema.py    | 30 +++++++++++
+ tests/test_api_testclient.py                | 13 +++++
+ tests/test_database_methods.py              |  4 ++
+ tests/test_docker_map_build_contract.py     | 31 ++++++++++++
+ 16 files changed, 257 insertions(+), 20 deletions(-)
+
+## Diff
+diff --git a/.env.example b/.env.example
+index 9276151..2d0f608 100644
+--- a/.env.example
++++ b/.env.example
+@@ -1,18 +1,22 @@
+ # Runtime
+ APP_ENV=development
+ LOG_LEVEL=info
+ WEB_WORKERS=2
+ WORKER_CONCURRENCY=2
+ WORKER_TIME_LIMIT=3600
+ PYTHONPATH=/app
+ 
++# Map tiles (public build-time values; provider changes require a Docker rebuild)
++VITE_MAP_TILE_URL=
++VITE_MAP_TILE_ATTRIBUTION=
++
+ # API
+ CORS_ALLOW_ORIGINS=http://localhost:8000,http://127.0.0.1:8000
+ ENABLE_API_DOCS=true
+ SECRET_KEY=change-me-in-production
+ SESSION_TOKEN_PEPPER=change-me-in-production
+ DEFAULT_ADMIN_PASSWORD=change-me-local-admin-password
+ LOGIN_MAX_ATTEMPTS=5
+ LOGIN_WINDOW_SECONDS=300
+ RESET_DEFAULT_ADMIN_PASSWORD=false
+ RATE_LIMIT_BACKEND=memory
+diff --git a/Dockerfile b/Dockerfile
+index e7beff9..f498607 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,14 +1,19 @@
+ FROM node:22-slim AS frontend-build
+ 
+ WORKDIR /app
+ 
++ARG VITE_MAP_TILE_URL
++ARG VITE_MAP_TILE_ATTRIBUTION
++ENV VITE_MAP_TILE_URL=${VITE_MAP_TILE_URL} \
++    VITE_MAP_TILE_ATTRIBUTION=${VITE_MAP_TILE_ATTRIBUTION}
++
+ COPY package.json package-lock.json tsconfig.json vite.config.ts index.html ./
+ COPY frontend ./frontend
+ COPY interface ./interface
+ 
+ RUN npm ci && npm run frontend:build
+ 
+ 
+ FROM python:3.11-slim AS runtime
+ 
+ ENV PYTHONDONTWRITEBYTECODE=1 \
+diff --git a/database/db.py b/database/db.py
+index ace2bc2..00c568b 100644
+--- a/database/db.py
++++ b/database/db.py
+@@ -1722,30 +1722,43 @@ class Database:
+                                    WHEN 'janela_quente' THEN 4
+                                    WHEN 'provavel' THEN 3
+                                    WHEN 'observacao' THEN 2
+                                    WHEN 'frio' THEN 1
+                                    ELSE 0
+                                END DESC,
+                                COALESCE(faixa_probabilidade, 'frio') ASC))[1] AS faixa_dominante,
+                    MAX(data_distribuicao)::text AS ultima_distribuicao
+             FROM filtrados
+             WHERE geometry IS NOT NULL
++              AND ST_IsValid(geometry)
++              AND NOT ST_IsEmpty(geometry)
+             GROUP BY municipio, geometry
+             ORDER BY maior_score DESC, total_processos DESC, municipio
+             LIMIT :limit_cidades
+         """, params)
+         count_params = {key: value for key, value in params.items() if key != "limit_cidades"}
+         totals = self.query(f"""
+-            SELECT COUNT(*) FILTER (WHERE m.geometry IS NOT NULL)::int AS total_processos,
+-                   COUNT(DISTINCT m.nome)
+-                       FILTER (WHERE m.geometry IS NOT NULL)::int AS total_municipios,
+-                   COUNT(*) FILTER (WHERE m.geometry IS NULL)::int AS sem_localizacao
++            SELECT COUNT(*) FILTER (
++                       WHERE m.geometry IS NOT NULL
++                         AND ST_IsValid(m.geometry)
++                         AND NOT ST_IsEmpty(m.geometry)
++                   )::int AS total_processos,
++                   COUNT(DISTINCT m.nome) FILTER (
++                       WHERE m.geometry IS NOT NULL
++                         AND ST_IsValid(m.geometry)
++                         AND NOT ST_IsEmpty(m.geometry)
++                   )::int AS total_municipios,
++                   COUNT(*) FILTER (
++                       WHERE m.geometry IS NULL
++                          OR NOT ST_IsValid(m.geometry)
++                          OR ST_IsEmpty(m.geometry)
++                   )::int AS sem_localizacao
+             FROM processos p
+             LEFT JOIN LATERAL (
+                 SELECT sp.score_total, sp.faixa_probabilidade
+                 FROM score_pericial sp
+                 WHERE sp.processo_id = p.id
+                 ORDER BY sp.calculado_em DESC NULLS LAST, sp.id DESC
+                 LIMIT 1
+             ) s ON TRUE
+             LEFT JOIN municipios_mt m ON lower(m.nome) = lower(p.municipio)
+             {where}
+diff --git a/docker-compose.prod.yml b/docker-compose.prod.yml
+index 27f7948..5ccbca2 100644
+--- a/docker-compose.prod.yml
++++ b/docker-compose.prod.yml
+@@ -29,20 +29,23 @@ x-source-env: &source-env
+ 
+ x-alert-env: &alert-env
+   TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+   TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+   WEBHOOK_ALERT_URL: ${WEBHOOK_ALERT_URL:-}
+ 
+ x-app-build: &app-build
+   build:
+     context: .
+     dockerfile: Dockerfile
++    args:
++      VITE_MAP_TILE_URL: ${VITE_MAP_TILE_URL:?VITE_MAP_TILE_URL is required}
++      VITE_MAP_TILE_ATTRIBUTION: ${VITE_MAP_TILE_ATTRIBUTION:?VITE_MAP_TILE_ATTRIBUTION is required}
+   restart: unless-stopped
+   networks:
+     - radar_network
+ 
+ services:
+   web:
+     <<: *app-build
+     environment:
+       <<: [*app-env, *source-env, *alert-env]
+     ports:
+diff --git a/docker-compose.yml b/docker-compose.yml
+index 21fff62..ca441d1 100644
+--- a/docker-compose.yml
++++ b/docker-compose.yml
+@@ -2,20 +2,23 @@ x-app-env: &app-env
+   APP_ENV: development
+   DATABASE_URL: postgresql://radar:radar123@db:5432/radar_pericial
+   REDIS_URL: redis://redis:6379/0
+   PYTHONPATH: /app
+   LOG_LEVEL: info
+ 
+ x-app-build: &app-build
+   build:
+     context: .
+     dockerfile: Dockerfile
++    args:
++      VITE_MAP_TILE_URL: ${VITE_MAP_TILE_URL:-}
++      VITE_MAP_TILE_ATTRIBUTION: ${VITE_MAP_TILE_ATTRIBUTION:-}
+   env_file:
+     - .env
+   depends_on:
+     db:
+       condition: service_healthy
+     redis:
+       condition: service_healthy
+   networks:
+     - radar_network
+   restart: unless-stopped
+diff --git a/docs/DEPLOY_PRODUCAO.md b/docs/DEPLOY_PRODUCAO.md
+index 76aa2c4..9e28ba8 100644
+--- a/docs/DEPLOY_PRODUCAO.md
++++ b/docs/DEPLOY_PRODUCAO.md
+@@ -228,21 +228,21 @@ Em uma validacao local de 2026-07-20, endpoint e PostGIS retornaram 702 processo
+ 
+ ### Tiles e atribuicao
+ 
+ Configure o provedor por variaveis de build:
+ 
+ ```env
+ VITE_MAP_TILE_URL=https://tiles.seu-provedor.example/{z}/{x}/{y}.png
+ VITE_MAP_TILE_ATTRIBUTION=Texto ou HTML de atribuicao exigido pelo provedor
+ ```
+ 
+-Em producao, configure as duas variaveis com um provedor comercial aprovado.
++Em producao, configure as duas variaveis com um provedor comercial aprovado. Como o Vite incorpora esses valores no bundle, alterar URL ou atribuicao exige executar novamente o build Docker e subir a nova imagem.
+ A atribuicao deve permanecer visivel no controle do mapa e e obrigatoria.
+ OpenStreetMap e apenas o fallback de desenvolvimento local; nao o use como provedor comercial sem revisao de termos, capacidade e politica de uso.
+ 
+ ### Operacao do mapa
+ 
+ 1. Depois do deploy, execute o smoke autenticado; ele inclui `/api/processos/mapa/resumo?limit_cidades=200`.
+ 2. Compare os tres totais retornados pelo endpoint com uma consulta PostGIS atual, sem fixar os numeros historicos.
+ 3. Revise os logs de `web` sem incluir tokens, senhas ou variaveis de ambiente em tickets ou relatorios.
+ 4. Verifique que os assets compilados servem Leaflet pelo bundle local e nao por `unpkg`.
+ 
+diff --git a/docs/PENDENCIAS_PRODUCAO.md b/docs/PENDENCIAS_PRODUCAO.md
+index 0222139..d64eb47 100644
+--- a/docs/PENDENCIAS_PRODUCAO.md
++++ b/docs/PENDENCIAS_PRODUCAO.md
+@@ -158,20 +158,21 @@ Validado localmente em 2026-07-20 com dados reais do PostGIS.
+ ### Concluido
+ - Leaflet e CSS cartografico entram no bundle Vite local, sem CDN em tempo de execucao.
+ - `GET /api/processos/mapa/resumo` agrega processos por municipio antes de aplicar `limit_cidades`.
+ - Smoke autenticado valida o contrato agregado e suas quatro chaves obrigatorias.
+ - Totais validados: 702 processos localizados, 73 municipios e 27 processos sem localizacao.
+ - Docker, suite backend com PostGIS e bundle frontend foram validados localmente.
+ 
+ ### Pendente antes do uso comercial
+ - Escolher um provedor comercial de tiles com SLA e termos compativeis.
+ - Usar URL e atribuicao do provedor em `VITE_MAP_TILE_URL` e `VITE_MAP_TILE_ATTRIBUTION`.
++- Trocar o provedor exige rebuild da imagem Docker, pois o Vite incorpora essas variaveis no bundle.
+ - Manter a atribuicao visivel no mapa; ela e obrigatoria para qualquer provedor.
+ - Validar os termos e a disponibilidade do provedor escolhido em homologacao e producao.
+ 
+ ### Checklist visual pendente
+-- Nenhum navegador real estava disponivel nesta validacao; nao declarar este checklist como concluido.
++- Edge headless foi executado nesta validacao; ainda falta homologacao humana em navegador real e com o provedor comercial definitivo.
+ - Conferir basemap, marcadores compactos e contadores em 1440x900, 1024x768 e 390x844.
+ - Confirmar selecao municipal, detalhes e acompanhamento de processo.
+ - Simular falha de tiles e confirmar que os dados municipais continuam visiveis.
+ - Confirmar ausencia de poligonos ou limites territoriais.
+ - Confirmar ausencia de sobreposicao ou corte de textos e controles.
+diff --git a/frontend/src/map/model.ts b/frontend/src/map/model.ts
+index 1a92d7c..0f48f03 100644
+--- a/frontend/src/map/model.ts
++++ b/frontend/src/map/model.ts
+@@ -1,11 +1,17 @@
+-import type { MapFilters, MapProcess, MapProcessListResponse } from "../types";
++import type {
++  MapCitySummary,
++  MapFilters,
++  MapProcess,
++  MapProcessListResponse,
++  MapSummaryResponse,
++} from "../types";
+ 
+ export const MAP_TONE_COLORS = {
+   critical: "#12492a",
+   high: "#17613a",
+   medium: "#256b45",
+   low: "#3d6449",
+ } as const;
+ 
+ const OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+ const OSM_TILE_ATTRIBUTION =
+@@ -88,20 +94,90 @@ export function parseProcessListResponse(value: unknown): MapProcessListResponse
+   }
+ 
+   return {
+     total: record.total,
+     offset: record.offset,
+     limit: record.limit,
+     items,
+   };
+ }
+ 
++function isFiniteNonNegativeNumber(value: unknown): value is number {
++  return typeof value === "number" && Number.isFinite(value) && value >= 0;
++}
++
++function parseMapCitySummary(value: unknown): MapCitySummary | null {
++  if (!isRecord(value)) return null;
++
++  const municipio = value.municipio;
++  const regiaoImea = value.regiao_imea;
++  const lat = value.lat;
++  const lng = value.lng;
++  const faixaDominante = value.faixa_dominante;
++  const ultimaDistribuicao = value.ultima_distribuicao;
++  if (
++    typeof municipio !== "string" || !municipio.trim() ||
++    typeof regiaoImea !== "string" ||
++    typeof lat !== "number" || !Number.isFinite(lat) || lat < -90 || lat > 90 ||
++    typeof lng !== "number" || !Number.isFinite(lng) || lng < -180 || lng > 180 ||
++    typeof faixaDominante !== "string" || !faixaDominante ||
++    typeof ultimaDistribuicao !== "string"
++  ) return null;
++
++  const totalProcessos = value.total_processos;
++  const processosQuentes = value.processos_quentes;
++  const processosProvaveis = value.processos_provaveis;
++  const maiorScore = value.maior_score;
++  if (
++    !isNonNegativeInteger(totalProcessos) ||
++    !isNonNegativeInteger(processosQuentes) ||
++    !isNonNegativeInteger(processosProvaveis) ||
++    !isFiniteNonNegativeNumber(maiorScore)
++  ) return null;
++
++  return {
++    municipio,
++    regiao_imea: regiaoImea,
++    lat,
++    lng,
++    total_processos: totalProcessos,
++    maior_score: maiorScore,
++    processos_quentes: processosQuentes,
++    processos_provaveis: processosProvaveis,
++    faixa_dominante: faixaDominante,
++    ultima_distribuicao: ultimaDistribuicao,
++  };
++}
++
++export function parseMapSummaryResponse(value: unknown): MapSummaryResponse | null {
++  if (!isRecord(value) || !Array.isArray(value.items)) return null;
++  if (
++    !isNonNegativeInteger(value.total_processos) ||
++    !isNonNegativeInteger(value.total_municipios) ||
++    !isNonNegativeInteger(value.sem_localizacao)
++  ) return null;
++
++  const items: MapCitySummary[] = [];
++  for (const item of value.items) {
++    const parsed = parseMapCitySummary(item);
++    if (!parsed) return null;
++    items.push(parsed);
++  }
++
++  return {
++    total_processos: value.total_processos,
++    total_municipios: value.total_municipios,
++    sem_localizacao: value.sem_localizacao,
++    items,
++  };
++}
++
+ export function formatCivilDate(value: unknown): string {
+   if (typeof value !== "string") return "--";
+   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+   if (!match) return "--";
+ 
+   const year = Number(match[1]);
+   const month = Number(match[2]);
+   const day = Number(match[3]);
+   const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+   const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+diff --git a/frontend/src/screens/MapScreen.tsx b/frontend/src/screens/MapScreen.tsx
+index 463ab0a..f8442ad 100644
+--- a/frontend/src/screens/MapScreen.tsx
++++ b/frontend/src/screens/MapScreen.tsx
+@@ -14,20 +14,21 @@ import {
+   X,
+ } from "lucide-react";
+ import { Empty, ErrorState } from "../components/Empty";
+ import { Page } from "../components/Page";
+ import { ProcessModal } from "../components/ProcessModal";
+ import {
+   MAP_TONE_COLORS,
+   buildMapSummaryParams,
+   formatCivilDate,
+   markerTone,
++  parseMapSummaryResponse,
+   parseProcessListResponse,
+   resolveTileConfig,
+ } from "../map/model";
+ import type {
+   ApiClient,
+   MapCitySummary,
+   MapFilters,
+   MapProcess,
+   MapSummaryResponse,
+   Screen,
+@@ -84,20 +85,31 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
+   const [page, setPage] = React.useState(0);
+   const [selectedProcess, setSelectedProcess] = React.useState<MapProcess | null>(null);
+   const [followingId, setFollowingId] = React.useState<number | null>(null);
+   const [loadingSummary, setLoadingSummary] = React.useState(true);
+   const [loadingProcesses, setLoadingProcesses] = React.useState(false);
+   const [summaryError, setSummaryError] = React.useState("");
+   const [processError, setProcessError] = React.useState("");
+   const [processRefresh, setProcessRefresh] = React.useState(0);
+   const [tilesAvailable, setTilesAvailable] = React.useState(true);
+ 
++  const clearSummaryDependentState = React.useCallback(() => {
++    setSummary(EMPTY_SUMMARY);
++    setSelectedCity(null);
++    setProcesses([]);
++    setProcessTotal(0);
++    setPage(0);
++    setSelectedProcess(null);
++    setProcessError("");
++    setLoadingProcesses(false);
++  }, []);
++
+   React.useEffect(() => {
+     const container = mapContainerRef.current;
+     if (!container || mapInstanceRef.current) return;
+ 
+     const map = L.map(container, {
+       center: DEFAULT_CENTER,
+       zoom: 6,
+       zoomControl: true,
+       attributionControl: true,
+     });
+@@ -127,46 +139,39 @@ export function MapScreen({ api, region, navigate, notify }: MapScreenProps) {
+     };
+   }, []);
+ 
+   const loadSummary = React.useCallback(async () => {
+     const requestId = summaryRequestRef.current + 1;
+     summaryRequestRef.current = requestId;
+     setLoadingSummary(true);
+     setSummaryError("");
+ 
+     const params = buildMapSummaryParams(appliedFilters, region);
+-    const data = await api.get<MapSummaryResponse>(
++    const payload = await api.get<unknown>(
+       `/api/processos/mapa/resumo?${params.toString()}`,
+     );
+     if (requestId !== summaryRequestRef.current) return;
+ 
+-    if (!data) {
+-      setSummary(EMPTY_SUMMARY);
+-      setSelectedCity(null);
+-      setSummaryError("Não foi possível carregar o resumo territorial.");
++    const nextSummary = parseMapSummaryResponse(payload);
++    if (!nextSummary) {
++      clearSummaryDependentState();
++      setSummaryError("N\u00e3o foi poss\u00edvel carregar o resumo territorial.");
+       setLoadingSummary(false);
+       return;
+     }
+-
+-    const nextSummary: MapSummaryResponse = {
+-      total_processos: data.total_processos,
+-      total_municipios: data.total_municipios,
+-      sem_localizacao: data.sem_localizacao,
+-      items: data.items,
+-    };
+     setSummary(nextSummary);
+     setSelectedCity((current) => {
+       if (!current) return null;
+       return nextSummary.items.find((city) => city.municipio === current.municipio) || null;
+     });
+     setLoadingSummary(false);
+-  }, [api, appliedFilters, region]);
++  }, [api, appliedFilters, clearSummaryDependentState, region]);
+ 
+   React.useEffect(() => {
+     void loadSummary();
+     return () => {
+       summaryRequestRef.current += 1;
+     };
+   }, [loadSummary]);
+ 
+   const selectCity = React.useCallback((city: MapCitySummary) => {
+     setSelectedCity(city);
+diff --git a/frontend/tests/map-model.behavior.test.ts b/frontend/tests/map-model.behavior.test.ts
+index 165c36d..674f669 100644
+--- a/frontend/tests/map-model.behavior.test.ts
++++ b/frontend/tests/map-model.behavior.test.ts
+@@ -1,14 +1,15 @@
+ import { describe, expect, it } from "vitest";
+ import {
+   MAP_TONE_COLORS,
+   formatCivilDate,
++  parseMapSummaryResponse,
+   parseProcessListResponse,
+   resolveTileConfig,
+ } from "../src/map/model";
+ 
+ const validProcess = {
+   id: 42,
+   numero_cnj: "0000042-00.2026.8.11.0001",
+   classe_processual: "Usucapião",
+   data_distribuicao: "2026-07-01",
+   score_total: 62,
+@@ -50,20 +51,39 @@ describe("map process response parsing", () => {
+ 
+   it.each([
+     { total: 0, items: [] },
+     { offset: 0, limit: 10, items: [] },
+     { total: 1, offset: 0, limit: 10, items: [{ id: "broken" }] },
+   ])("rejects an invalid paginated payload", (payload) => {
+     expect(parseProcessListResponse(payload)).toBeNull();
+   });
+ });
+ 
++const validMapSummary = { total_processos: 2, total_municipios: 1, sem_localizacao: 0, items: [{ municipio: "Cuiaba", regiao_imea: "Centro-Sul", lat: -15.6, lng: -56.1, total_processos: 2, maior_score: 82, processos_quentes: 1, processos_provaveis: 1, faixa_dominante: "janela_quente", ultima_distribuicao: "2026-07-01" }] };
++
++describe("map summary response parsing", () => {
++  it("accepts an empty, structurally valid map summary", () => {
++    expect(parseMapSummaryResponse({ ...validMapSummary, items: [] })).toEqual({ ...validMapSummary, items: [] });
++  });
++
++  it.each([
++    null,
++    { ...validMapSummary, items: null },
++    { ...validMapSummary, total_processos: "2" },
++    { ...validMapSummary, items: [{ ...validMapSummary.items[0], lat: Number.NaN }] },
++    { ...validMapSummary, items: [{ ...validMapSummary.items[0], total_processos: -1 }] },
++    { ...validMapSummary, items: [{ ...validMapSummary.items[0], municipio: "" }] },
++  ])("rejects malformed aggregate payloads", (payload) => {
++    expect(parseMapSummaryResponse(payload)).toBeNull();
++  });
++});
++
+ describe("civil date formatting", () => {
+   it("preserves YYYY-MM-DD without UTC conversion or time", () => {
+     expect(formatCivilDate("2026-07-01")).toBe("01/07/2026");
+   });
+ 
+   it("rejects impossible or timestamp values", () => {
+     expect(formatCivilDate("2026-02-30")).toBe("--");
+     expect(formatCivilDate("2026-07-01T00:00:00Z")).toBe("--");
+   });
+ });
+diff --git a/frontend/tests/map-screen.behavior.test.tsx b/frontend/tests/map-screen.behavior.test.tsx
+index 434d3c7..1f3dc35 100644
+--- a/frontend/tests/map-screen.behavior.test.tsx
++++ b/frontend/tests/map-screen.behavior.test.tsx
+@@ -469,10 +469,38 @@ describe("map failure states and cleanup", () => {
+     await screen.findByRole("button", { name: /Cuiabá.*Centro-Sul.*2/i });
+     const map = leafletMock.maps[0];
+     const tileLayer = leafletMock.tileLayers[0];
+ 
+     view.unmount();
+ 
+     expect(tileLayer.offTypes).toContain("tileerror");
+     expect(map.remove).toHaveBeenCalledTimes(1);
+   });
+ });
++
++
++describe("summary payload failures", () => {
++  it("clears stale municipal state and exposes retry when the aggregate payload is invalid", async () => {
++    let summaryCalls = 0;
++    const api = createApi({ total: 1, offset: 0, limit: 10, items: [processItem(1, "STALE-PROCESS")] });
++    api.get = vi.fn((path: string) => {
++      if (!path.startsWith("/api/processos/mapa/resumo")) {
++        return Promise.resolve({ total: 1, offset: 0, limit: 10, items: [processItem(1, "STALE-PROCESS")] });
++      }
++      summaryCalls += 1;
++      return Promise.resolve(summaryCalls === 1 ? summary : { ...summary, items: null });
++    });
++    renderMap(api);
++
++    await selectCuiaba();
++    expect(await screen.findByText("STALE-PROCESS")).toBeInTheDocument();
++
++    await userEvent.click(screen.getByRole("button", { name: /Atualizar/i }));
++
++    expect(await screen.findByText("N\u00e3o foi poss\u00edvel carregar o resumo territorial.")).toBeInTheDocument();
++    expect(screen.queryByText("STALE-PROCESS")).not.toBeInTheDocument();
++    expect(screen.queryByLabelText("Processos de Cuiab\u00e1")).not.toBeInTheDocument();
++
++    await userEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
++    await waitFor(() => expect(summaryCalls).toBe(3));
++  });
++});
+diff --git a/index.html b/index.html
+index 98102c2..3a8f1f9 100644
+--- a/index.html
++++ b/index.html
+@@ -1,12 +1,13 @@
+ <!doctype html>
+ <html lang="pt-BR">
+   <head>
+     <meta charset="UTF-8" />
+     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
++    <link rel="icon" type="image/svg+xml" href="/frontend/src/assets/radar-pericial-logo.svg" />
+     <title>Radar Pericial</title>
+   </head>
+   <body>
+     <div id="root"></div>
+     <script type="module" src="/frontend/src/main.tsx"></script>
+   </body>
+ </html>
+diff --git a/tests/integration/test_postgis_schema.py b/tests/integration/test_postgis_schema.py
+index 895a0e8..f056afb 100644
+--- a/tests/integration/test_postgis_schema.py
++++ b/tests/integration/test_postgis_schema.py
+@@ -19,10 +19,40 @@ def test_postgis_schema_and_migrations_are_available():
+     with engine.connect() as conn:
+         postgis = conn.execute(text("SELECT postgis_version()")).scalar()
+         migrations = conn.execute(text("SELECT COUNT(*) FROM schema_migrations")).scalar()
+         metrics_table = conn.execute(text("""
+             SELECT to_regclass('public.metricas_coleta_classe') IS NOT NULL
+         """)).scalar()
+ 
+     assert postgis
+     assert migrations >= 1
+     assert metrics_table is True
++
++
++def test_postgis_localizable_geometry_predicate_excludes_invalid_and_empty_shapes():
++    if os.getenv("RUN_POSTGIS_INTEGRATION") != "true":
++        pytest.skip("PostGIS integration test disabled")
++
++    database_url = os.environ["DATABASE_URL"]
++    if database_url.startswith("postgresql://"):
++        database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
++
++    engine = create_engine(database_url, pool_pre_ping=True)
++    with engine.connect() as conn:
++        result = conn.execute(text("""
++            WITH geometries(kind, geometry) AS (
++                VALUES
++                    ('valid', ST_GeomFromText('POLYGON((0 0, 1 0, 1 1, 0 0))')),
++                    ('invalid', ST_GeomFromText('POLYGON((0 0, 1 1, 1 0, 0 1, 0 0))')),
++                    ('empty', ST_GeomFromText('POLYGON EMPTY')),
++                    ('missing', NULL::geometry)
++            ), classified AS (
++                SELECT *, geometry IS NOT NULL AND ST_IsValid(geometry) AND NOT ST_IsEmpty(geometry) AS localizable
++                FROM geometries
++            )
++            SELECT COUNT(*) FILTER (WHERE localizable) AS located,
++                   COUNT(*) FILTER (WHERE NOT localizable) AS without_location,
++                   COUNT(ST_PointOnSurface(geometry)) FILTER (WHERE localizable) AS drawable
++            FROM classified
++        """)).mappings().one()
++
++    assert result == {"located": 1, "without_location": 3, "drawable": 1}
+diff --git a/tests/test_api_testclient.py b/tests/test_api_testclient.py
+index ad0c197..5d43120 100644
+--- a/tests/test_api_testclient.py
++++ b/tests/test_api_testclient.py
+@@ -634,20 +634,33 @@ def test_processos_mapa_resumo_returns_aggregated_cities(api_client):
+     assert payload["total_municipios"] == 1
+     assert payload["items"][0]["municipio"] == "Cuiaba"
+     assert fake_db.map_filters["regiao"] == "Centro-Sul"
+     assert fake_db.map_filters["faixa"] == "janela_quente"
+     assert fake_db.map_filters["municipio"] == "Cuiaba"
+     assert fake_db.map_filters["data_inicio"] == "2026-01-01"
+     assert fake_db.map_filters["data_fim"] == "2026-07-19"
+     assert fake_db.map_limit_cidades == 100
+ 
+ 
++def test_processos_mapa_legacy_returns_authenticated_payload(api_client):
++    client, _ = api_client
++
++    response = client.get(
++        "/api/processos/mapa?regiao=Centro-Sul",
++        headers=auth_header("token-viewer"),
++    )
++
++    assert response.status_code == 200
++    assert response.json()["total"] == 1
++    assert response.json()["items"][0]["municipio"] == "Cuiaba"
++
++
+ def test_processos_mapa_resumo_requires_authentication(api_client):
+     client, _ = api_client
+ 
+     response = client.get("/api/processos/mapa/resumo")
+ 
+     assert response.status_code == 401
+ 
+ 
+ @pytest.mark.parametrize("limit_cidades", [0, 201])
+ def test_processos_mapa_resumo_rejects_invalid_city_limit(
+diff --git a/tests/test_database_methods.py b/tests/test_database_methods.py
+index 5d801ff..e283e67 100644
+--- a/tests/test_database_methods.py
++++ b/tests/test_database_methods.py
+@@ -421,20 +421,24 @@ def test_resumo_mapa_processos_aggregates_before_city_limit(monkeypatch):
+             "p.data_distribuicao >= :data_inicio",
+             "p.data_distribuicao <= :data_fim",
+         ):
+             assert clause in sql
+     assert "m.nome AS municipio" in items_sql
+     assert "COUNT(DISTINCT m.nome)" in totals_sql
+     assert "CASE COALESCE(faixa_probabilidade, 'frio')" in items_sql
+     assert "COALESCE(faixa_probabilidade, 'frio') ASC" in items_sql
+     assert "GROUP BY municipio, geometry" in items_sql
+     assert "ST_PointOnSurface(geometry)" in items_sql
++    for predicate in ("geometry IS NOT NULL", "ST_IsValid(geometry)", "NOT ST_IsEmpty(geometry)"):
++        assert predicate in items_sql
++    for predicate in ("m.geometry IS NOT NULL", "ST_IsValid(m.geometry)", "NOT ST_IsEmpty(m.geometry)"):
++        assert predicate in totals_sql
+     assert items_params == {
+         "limit_cidades": 100,
+         "regiao": "Centro-Sul",
+         "municipio": "%cuiaba%",
+         "faixa": "janela_quente",
+         "data_inicio": "2026-01-01",
+         "data_fim": "2026-07-19",
+     }
+     assert totals_params == {
+         key: value
+diff --git a/tests/test_docker_map_build_contract.py b/tests/test_docker_map_build_contract.py
+new file mode 100644
+index 0000000..8c8ee3f
+--- /dev/null
++++ b/tests/test_docker_map_build_contract.py
+@@ -0,0 +1,31 @@
++from pathlib import Path
++
++
++ROOT = Path(__file__).resolve().parents[1]
++
++
++def test_docker_build_receives_tile_provider_before_vite_build():
++    dockerfile = (ROOT / "Dockerfile").read_text(encoding="utf-8")
++    build_command = dockerfile.index("RUN npm ci && npm run frontend:build")
++
++    for variable in ("VITE_MAP_TILE_URL", "VITE_MAP_TILE_ATTRIBUTION"):
++        assert dockerfile.index(f"ARG {variable}") < build_command
++        assert dockerfile.index(variable, dockerfile.index("ENV ")) < build_command
++
++
++def test_compose_builds_forward_public_tile_provider_pair():
++    development = (ROOT / "docker-compose.yml").read_text(encoding="utf-8")
++    production = (ROOT / "docker-compose.prod.yml").read_text(encoding="utf-8")
++
++    for variable in ("VITE_MAP_TILE_URL", "VITE_MAP_TILE_ATTRIBUTION"):
++        assert f"{variable}: ${{{variable}:-}}" in development
++        assert f"{variable}: ${{{variable}:?{variable} is required}}" in production
++
++
++def test_index_uses_the_existing_logo_as_a_svg_favicon():
++    index_html = (ROOT / "index.html").read_text(encoding="utf-8")
++
++    assert 'rel="icon"' in index_html
++    assert 'type="image/svg+xml"' in index_html
++    assert 'href="/frontend/src/assets/radar-pericial-logo.svg"' in index_html
++    assert (ROOT / "frontend" / "src" / "assets" / "radar-pericial-logo.svg").is_file()
